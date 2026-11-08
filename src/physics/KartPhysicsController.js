@@ -172,6 +172,9 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     }
   }
 
+  if (Number.isInteger(splineData.start_finish_index)) {
+    startFinishIdx = splineData.start_finish_index;
+  }
   const startFinishArc = samples[startFinishIdx].arc_length_m;
   // Position the kart on the starting grid right behind the black-and-white
   // checkered stripes (645..646, entry edge at startFinishArc - 0.0095m) so the
@@ -267,7 +270,30 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
    * (shared by Autopilot and the AI rival karts). Slows through the Cat Helix and
    * Lamp Corkscrew envelopes and any tight curvature; ~0.56..1.12.
    */
+  // Generated tracks carry per-sample corner radii: precompute a look-ahead cruise table
+  // (slow for the tightest corner in the next 15cm, full speed on big sweepers).
+  const cruiseTable = (() => {
+    if (samples[0].radius_m === undefined) return null;
+    const lookSamples = Math.max(1, Math.round((0.15 / totalLength) * N));
+    const table = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      let minR = Infinity;
+      for (let j = -4; j <= lookSamples; j++) {
+        minR = Math.min(minR, samples[(i + j + N) % N].radius_m);
+      }
+      table[i] = THREE.MathUtils.clamp(Math.sqrt(minR / 0.3), 0.76, 1.0);
+    }
+    return table;
+  })();
+
   function computeCruiseSpeedFactor(sVal, frame = sampleTrackAtArcLength(sVal, _nextSampleOut)) {
+    if (cruiseTable) {
+      return THREE.MathUtils.clamp(
+        cruiseTable[frame.index] + computeSlopeSpeedDelta(frame) * 0.5,
+        0.56,
+        1.12
+      );
+    }
     const sWrapped = ((sVal % totalLength) + totalLength) % totalLength;
     const curvatureNorm = THREE.MathUtils.clamp(Math.abs(frame.signedCurvature) / 1.25, 0.0, 1.0);
     const inCatEnvelope =
@@ -1167,6 +1193,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     getGridSlot,
     getRaceProgress,
     computeCruiseSpeedFactor,
+    aiPace: splineData.ai_pace ?? 1.0,
     curbLateral: CURB_LAT,
     railLateral: RAIL_LAT,
   };

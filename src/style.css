@@ -1395,3 +1395,69 @@ body {
   }
 }
 
+
+/* World picker on the start screen */
+.world-picker-label {
+  margin-top: 4px;
+  text-align: left;
+}
+
+.world-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.world-card {
+  --card-accent: #00e5ff;
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  font-family: 'Orbitron', sans-serif;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.world-card:hover,
+.world-card:focus-visible {
+  border-color: var(--card-accent);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.world-card.active {
+  border-color: var(--card-accent);
+  background: color-mix(in srgb, var(--card-accent) 18%, transparent);
+  box-shadow: 0 0 0 1px var(--card-accent) inset, 0 0 18px color-mix(in srgb, var(--card-accent) 35%, transparent);
+}
+
+.world-card-name {
+  font-style: italic;
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--card-accent);
+}
+
+.world-card-blurb {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 640px) {
+  .world-picker {
+    grid-template-columns: 1fr;
+  }
+}

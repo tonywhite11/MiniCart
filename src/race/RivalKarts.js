@@ -24,9 +24,9 @@ export const RIVAL_ROSTER = [
 export const PLAYER_ENTRY = { name: 'YOU', color: 0xe01b24 };
 
 // Speeds in m/s (same calibration as KartPhysicsController)
-const CRUISE_SPEED = 0.204;
+const CRUISE_SPEED = 0.195; // Same as the player's top speed without turbo
 // Rivals run ~12% quicker than the Autopilot line so a clean player lap (~20s) is needed to win
-const RIVAL_PACE = 1.12;
+const RIVAL_PACE = 1.06;
 const BOOST_SPEED = 0.289;
 
 // Collision footprint at the 1P kart scale (0.38x of the 18mm x 12mm kart)
@@ -153,7 +153,7 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
     const gap = playerProgress - r.distance; // + = player ahead of this rival
     const rubber = THREE.MathUtils.clamp(gap * 0.09, -0.07, 0.07);
 
-    let targetSpeed = CRUISE_SPEED * RIVAL_PACE * r.skill * (1 + rubber) * cornerFactor;
+    let targetSpeed = CRUISE_SPEED * RIVAL_PACE * physics.aiPace * r.skill * (1 + rubber) * cornerFactor;
 
     if (r.finished) {
       targetSpeed *= 0.72; // Cool-down lap

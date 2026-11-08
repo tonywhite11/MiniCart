@@ -34,7 +34,7 @@
             class="hud-brand-title"
             role="button"
             tabindex="0"
-            title="Click to open Controls &amp; Camera Menu"
+            title="Open the menu (Esc)"
           >MiniCart</div>
         </div>
 
@@ -83,6 +83,9 @@
           <div class="welcome-eyebrow">DESKTOP CIRCUIT · 3 LAPS · 6 RACERS</div>
           <h1 id="welcome-title" class="welcome-title">MINICART</h1>
 
+          <div class="welcome-control-label world-picker-label">CHOOSE YOUR WORLD</div>
+          <div id="world-picker" class="world-picker" role="group" aria-label="Choose world"></div>
+
           <div class="welcome-controls-grid">
             <!-- WASD Controls -->
             <div class="welcome-control-block">
@@ -116,8 +119,8 @@
               <div class="cam-keys-list">
                 <div class="cam-key-row cam-pill active" data-cam="1"><kbd class="welcome-key welcome-key-cyan">1</kbd><span>CHASE VIEW</span></div>
                 <div class="cam-key-row cam-pill" data-cam="2"><kbd class="welcome-key welcome-key-cyan">2</kbd><span>COCKPIT</span></div>
-                <div class="cam-key-row cam-pill" data-cam="3"><kbd class="welcome-key welcome-key-cyan">3</kbd><span>FULL DESK VIEW</span></div>
-                <div class="cam-key-row cam-pill" data-cam="4"><kbd class="welcome-key welcome-key-cyan">4</kbd><span>DRONE VIEW</span></div>
+                <div class="cam-key-row cam-pill" data-cam="3"><kbd class="welcome-key welcome-key-cyan">3</kbd><span>TV CAMERA</span></div>
+                <div class="cam-key-row cam-pill" data-cam="4"><kbd class="welcome-key welcome-key-cyan">4</kbd><span>OVERVIEW</span></div>
               </div>
             </div>
           </div>
@@ -149,9 +152,9 @@
               <span class="welcome-start-text">RACE AGAIN</span>
               <kbd class="welcome-enter-kbd">ENTER ↵</kbd>
             </button>
-            <button id="btn-finish-autopilot" class="welcome-start-btn finish-action-btn finish-autopilot-btn" type="button">
-              <span class="welcome-start-text">AUTO-PILOT</span>
-              <kbd class="welcome-enter-kbd">P</kbd>
+            <button id="btn-finish-menu" class="welcome-start-btn finish-action-btn finish-autopilot-btn" type="button">
+              <span class="welcome-start-text">MENU</span>
+              <kbd class="welcome-enter-kbd">ESC</kbd>
             </button>
           </div>
         </div>

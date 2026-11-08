@@ -4,9 +4,7 @@ import { defineConfig, type Plugin } from 'vite';
 
 const GSTATIC_MODELS_BASE = 'https://www.gstatic.com/aistudio/starter-apps/desk-racer/models';
 const GLB_FILES = [
-  'desk_props.glb',
   'kart_1to87.glb',
-  'room_environment.glb',
 ];
 
 function fetchGstaticModelsOnBuild(): Plugin {
