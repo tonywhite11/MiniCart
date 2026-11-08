@@ -14,6 +14,7 @@ import { TRACK_DEFS, WORLD_ORDER } from './tracks/trackDefs.js';
 import { buildTrackMesh } from './tracks/TrackMeshBuilder.js';
 import { WORLDS } from './worlds/index.js';
 import { initSpeedometer } from './game/speedometer.js';
+import { DIFFICULTY_LEVELS, loadProgress, saveProgress } from './game/difficulty.js';
 
 const WORLD_STORAGE_KEY = 'minicart.world';
 const KART_SCALE = 0.38;
@@ -285,11 +286,45 @@ async function initGame() {
   const iconSoundOff = $('icon-sound-off');
   const elBrand = $('hud-brand-logo');
   const worldPicker = $('world-picker');
+  const levelPicker = $('level-picker');
+  const elFinishUnlock = $('hud-finish-unlock');
+  const elRaceAgainText = btnRaceAgain ? btnRaceAgain.querySelector('.welcome-start-text') : null;
 
   const trackName = TRACK_DEFS[worldKey].name.toUpperCase();
   document.title = `MiniCart — ${world.name}`;
-  if (elWelcomeEyebrow) elWelcomeEyebrow.textContent = `${trackName} · 3 LAPS · ${rivals.fieldSize} RACERS`;
-  if (elFinishEyebrow) elFinishEyebrow.textContent = `${trackName} · 3 LAPS COMPLETE`;
+
+  // Difficulty ladder (per world): win to unlock and move up to the next level
+  const progress = loadProgress(worldKey);
+  const currentLevel = () => DIFFICULTY_LEVELS[progress.selected];
+  function applyLevel() {
+    rivals.setDifficulty(currentLevel());
+    if (elWelcomeEyebrow) {
+      elWelcomeEyebrow.textContent = `${trackName} · ${currentLevel().name} · 3 LAPS · ${rivals.fieldSize} RACERS`;
+    }
+    if (elFinishEyebrow) elFinishEyebrow.textContent = `${trackName} · ${currentLevel().name} · 3 LAPS COMPLETE`;
+    renderLevelPicker();
+  }
+  function renderLevelPicker() {
+    if (!levelPicker) return;
+    levelPicker.innerHTML = '';
+    DIFFICULTY_LEVELS.forEach((lvl, i) => {
+      const locked = i > progress.unlocked;
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'level-pill' + (i === progress.selected ? ' active' : '') + (locked ? ' locked' : '');
+      pill.disabled = locked;
+      pill.textContent = locked ? `🔒 ${lvl.name}` : lvl.name;
+      pill.title = locked ? `Win at ${DIFFICULTY_LEVELS[i - 1].name} to unlock` : `Race at ${lvl.name}`;
+      pill.addEventListener('click', (e) => {
+        e.stopPropagation();
+        progress.selected = i;
+        saveProgress(worldKey, progress);
+        applyLevel();
+        pill.blur();
+      });
+      levelPicker.appendChild(pill);
+    });
+  }
   document.documentElement.style.setProperty('--world-accent', world.accent);
 
   if (worldPicker) {
@@ -493,6 +528,40 @@ async function initGame() {
   function showFinish(total, best) {
     hideLapSplit();
     const place = rivals.notifyPlayerFinished();
+    // Progression: a win moves you up a level (unlocking it if new)
+    const raced = currentLevel();
+    let unlockMsg = '';
+    if (!finishShown && place === 1) {
+      const next = progress.selected + 1;
+      if (next < DIFFICULTY_LEVELS.length) {
+        if (next > progress.unlocked) {
+          progress.unlocked = next;
+          unlockMsg = `${DIFFICULTY_LEVELS[next].name} UNLOCKED!`;
+        } else {
+          unlockMsg = `MOVING UP TO ${DIFFICULTY_LEVELS[next].name}`;
+        }
+        progress.selected = next;
+      } else {
+        unlockMsg = `${raced.name} CONQUERED — TRY ANOTHER WORLD!`;
+      }
+      saveProgress(worldKey, progress);
+    } else if (!finishShown) {
+      unlockMsg = place <= 3 ? `WIN TO REACH THE NEXT LEVEL` : '';
+    }
+    if (!finishShown) {
+      if (elFinishUnlock) {
+        elFinishUnlock.textContent = unlockMsg;
+        elFinishUnlock.classList.toggle('hidden', !unlockMsg);
+      }
+      if (elRaceAgainText) {
+        elRaceAgainText.textContent =
+          place === 1 && progress.selected !== DIFFICULTY_LEVELS.indexOf(raced)
+            ? `NEXT: ${currentLevel().name}`
+            : 'RACE AGAIN';
+      }
+      if (elFinishEyebrow) elFinishEyebrow.textContent = `${trackName} · ${raced.name} · 3 LAPS COMPLETE`;
+      renderLevelPicker();
+    }
     if (elFinishTitle) {
       elFinishTitle.textContent = `${place}${ordinalSuffix(place)} PLACE`;
       elFinishTitle.classList.toggle('is-winner', place === 1);
@@ -598,6 +667,7 @@ async function initGame() {
   }
   function startRace() {
     if (!soundOn) setSound(true);
+    applyLevel();
     if (elWelcome) elWelcome.classList.add('hidden');
     syncTouchVisibility();
     startCountdown();
@@ -715,6 +785,7 @@ async function initGame() {
   });
 
   setCameraMode(1);
+  applyLevel();
   showWelcome();
   const clock = new THREE.Clock();
   let elapsed = 0;

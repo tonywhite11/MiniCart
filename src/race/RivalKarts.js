@@ -91,6 +91,10 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
     };
   });
 
+  // Difficulty: overall pace plus how much the pack eases off when leading the player
+  // and pushes when trailing (catch-up / rubber-banding)
+  let difficulty = { pace: 1.0, easeWhenAhead: 0.07, pushWhenBehind: 0.07 };
+
   let raceStarted = false;
   let finishCounter = 0;
   let playerPlace = null;
@@ -151,9 +155,10 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
 
     // Rubber-banding keeps the pack close to the player without being blatant
     const gap = playerProgress - r.distance; // + = player ahead of this rival
-    const rubber = THREE.MathUtils.clamp(gap * 0.09, -0.07, 0.07);
+    const rubber = THREE.MathUtils.clamp(gap * 0.09, -difficulty.easeWhenAhead, difficulty.pushWhenBehind);
 
-    let targetSpeed = CRUISE_SPEED * RIVAL_PACE * physics.aiPace * r.skill * (1 + rubber) * cornerFactor;
+    let targetSpeed =
+      CRUISE_SPEED * RIVAL_PACE * physics.aiPace * difficulty.pace * r.skill * (1 + rubber) * cornerFactor;
 
     if (r.finished) {
       targetSpeed *= 0.72; // Cool-down lap
@@ -493,6 +498,9 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
     attachGlbKart,
     get fieldSize() {
       return rivals.length + 1;
+    },
+    setDifficulty(d) {
+      difficulty = { ...difficulty, ...d };
     },
     onPlayerBump(cb) {
       bumpCallback = cb;

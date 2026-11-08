@@ -1461,3 +1461,64 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Difficulty ladder */
+.level-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+
+.level-pill {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 7px 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  font-family: 'Orbitron', sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.level-pill:hover:not(:disabled),
+.level-pill:focus-visible {
+  border-color: var(--world-accent, #00e5ff);
+  outline: none;
+}
+
+.level-pill.active {
+  border-color: var(--world-accent, #00e5ff);
+  background: color-mix(in srgb, var(--world-accent, #00e5ff) 22%, transparent);
+}
+
+.level-pill.locked {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.hud-finish-unlock {
+  margin-top: 10px;
+  font-family: 'Orbitron', sans-serif;
+  font-style: italic;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #ffd27a;
+  text-shadow: 0 0 14px rgba(255, 170, 68, 0.6), 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.hud-finish-unlock.hidden {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .level-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
