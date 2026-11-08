@@ -7,7 +7,6 @@ const GLB_FILES = [
   'desk_props.glb',
   'kart_1to87.glb',
   'room_environment.glb',
-  'track_coaster.glb',
 ];
 
 function fetchGstaticModelsOnBuild(): Plugin {

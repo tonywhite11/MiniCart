@@ -947,7 +947,7 @@ export function buildCoasterTrack(splineData) {
   footpadInstanced.receiveShadow = true;
 
   // Cross-head saddle bracket directly under the track deck
-  const saddleGeo = new THREE.BoxGeometry(0.024, 0.0022, 0.0055);
+  const saddleGeo = new THREE.BoxGeometry(2 * halfWidth + 0.002, 0.0022, 0.0055);
   const saddleInstanced = new THREE.InstancedMesh(saddleGeo, silverSteelMat, numColumns);
   saddleInstanced.castShadow = true;
 
@@ -1033,8 +1033,9 @@ export function buildCoasterTrack(splineData) {
   gantryGroup.name = 'StartFinishGantry';
   gantryGroup.position.set(0.0183, 0.035, 0.255);
 
-  // Overhead gantry truss towers on Z = -0.018 and Z = +0.018 (track runs East-to-West along X here)
-  for (const gz of [-0.018, 0.018]) {
+  // Overhead gantry truss towers just outside the curbs (track runs East-to-West along X here)
+  const gantryTowerZ = halfWidth + 0.007;
+  for (const gz of [-gantryTowerZ, gantryTowerZ]) {
     const tower = new THREE.Mesh(
       new THREE.BoxGeometry(0.0040, 0.028, 0.0040),
       silverSteelMat
@@ -1046,7 +1047,7 @@ export function buildCoasterTrack(splineData) {
 
   // Overhead digital signboard spanning across the track (lowered for 1:150 N-scale)
   const signBox = new THREE.Mesh(
-    new THREE.BoxGeometry(0.0048, 0.0082, 0.040),
+    new THREE.BoxGeometry(0.0048, 0.0082, 2 * (halfWidth + 0.009)),
     new THREE.MeshStandardMaterial({ color: 0x161922, roughness: 0.35, metalness: 0.6 })
   );
   signBox.position.set(0, 0.024, 0);
@@ -1064,7 +1065,7 @@ export function buildCoasterTrack(splineData) {
     [0.0026, Math.PI / 2],
     [-0.0026, -Math.PI / 2],
   ]) {
-    const signFace = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.0072), signFaceMat);
+    const signFace = new THREE.Mesh(new THREE.PlaneGeometry(2 * (halfWidth + 0.007), 0.0072), signFaceMat);
     signFace.position.set(sx, 0.024, 0);
     signFace.rotation.y = rotY;
     gantryGroup.add(signFace);
@@ -1082,7 +1083,7 @@ export function buildCoasterTrack(splineData) {
 
   // Checkered Start/Finish Line Stripe directly on the Sector 6 roadbed
   const startStripe = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.0035, 0.021),
+    new THREE.PlaneGeometry(0.0035, 2 * halfWidth - 0.001),
     new THREE.MeshBasicMaterial({ map: gantryTex })
   );
   startStripe.rotation.x = -Math.PI / 2;

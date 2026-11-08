@@ -216,6 +216,9 @@ async function initApp() {
   ]);
   const manifest = await manifestRes.json();
   const splineData = await splineRes.json();
+  // Road width used by the track builder, physics and AI (the original model was 22mm).
+  const TRACK_WIDTH_M = 0.033;
+  splineData.track_width_m = TRACK_WIDTH_M;
 
   // Sector lookup map
   const sectorNames = {};
@@ -732,14 +735,13 @@ async function initApp() {
       disposeGroupGeometries(diorama.root);
       glbContainerGroup.add(glbScene);
     });
-    tryLoadGlbAsset('track_coaster.glb', 'track', (glbScene) => {
-      if (coaster.calibrateTrackCoasterGlb) {
-        coaster.calibrateTrackCoasterGlb(glbScene);
-      }
-      coaster.trackGroup.visible = false;
-      disposeGroupGeometries(coaster.trackGroup);
-      glbContainerGroup.add(glbScene);
-    });
+    // The track is always built procedurally from the spline (so its width and layout are ours
+    // to change); the fixed-width track_coaster.glb is no longer loaded.
+    if (!loadedGlbStatus.track) {
+      loadedGlbStatus.track = true;
+      settledGlbStatus.track = true;
+      glbDownloadProgress.track = 1.0;
+    }
     tryLoadGlbAsset('kart_1to87.glb', 'kart', (glbScene) => {
       // Snapshot pristine materials for the rivals before the player kart restyles them
       rivalKartTemplate = cloneKartTemplate(glbScene);

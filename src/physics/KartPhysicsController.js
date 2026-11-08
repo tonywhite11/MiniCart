@@ -67,6 +67,12 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   const N = samples.length;
   const totalLength = splineData.total_length_m || 3.8371;
 
+  // Lateral limits derived from the road width (original 22mm road: curbs at 7.8mm, rail contact at 9.0mm)
+  const trackHalfWidth = (splineData.track_width_m || 0.022) * 0.5;
+  const CURB_LAT = trackHalfWidth - 0.0032; // Kart centre reaches the red/white curb
+  const RAIL_LAT = trackHalfWidth - 0.0020; // Kart centre at guardrail contact
+  const RAIL_SCRAPE_DRAG = 0.9; // m/s² lost while grinding along a guardrail
+
   // C2 Position & Orientation Frame Smoothing:
   // track_spline.json has 18-sample Catmull-Rom knot boundaries in Sector 2 (Cat Helix) and Sector 4 (Lamp Corkscrew)
   // where adjacent tangents jump by up to 8.3°–10.1° across a single 3.1mm segment.
@@ -298,7 +304,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   // -------------------------------------------------------------------------
   const GRID_FIRST_ROW_GAP = 0.025; // Front row sits 25mm behind the checkered stripes
   const GRID_ROW_SPACING = 0.016; // 16mm between rows
-  const GRID_LANE_OFFSET = 0.0034; // ±3.4mm from the centreline
+  const GRID_LANE_OFFSET = trackHalfWidth * 0.36; // Two lanes either side of the centreline
   const GRID_ROWS = 3; // 6 karts: 2 per row
   const PLAYER_GRID_SLOT = GRID_ROWS * 2 - 1; // Player starts at the back (slot index 5 → 6th)
 
@@ -338,7 +344,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
 
   const state = {
     s: sectorStartArcs[6], // Start on Sector 6 G915 Viaduct approaching Start/Finish gantry
-    lateralOffset: getGridSlot(PLAYER_GRID_SLOT).lateralOffset, // -0.0078m to +0.0078m across the 22mm roadbed
+    lateralOffset: getGridSlot(PLAYER_GRID_SLOT).lateralOffset, // Between ±CURB_LAT on the road
     lateralVel: 0.0,
     speed: 0.0, // Stationary (0.0 m/s) in Manual Mode at startup until player presses W/Up or P
     headingYaw: 0.0, // World-differential heading yaw relative to track tangent (clamped to [-1.05, +1.05] = ±60°)
@@ -409,10 +415,10 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   }
 
   function computeRailZone(latOffset) {
-    if (latOffset <= -0.0089) return 'L-RAIL';
-    if (latOffset >= 0.0089) return 'R-RAIL';
-    if (latOffset <= -0.0078) return 'L-CURB';
-    if (latOffset >= 0.0078) return 'R-CURB';
+    if (latOffset <= -(RAIL_LAT - 0.0001)) return 'L-RAIL';
+    if (latOffset >= RAIL_LAT - 0.0001) return 'R-RAIL';
+    if (latOffset <= -CURB_LAT) return 'L-CURB';
+    if (latOffset >= CURB_LAT) return 'R-CURB';
     return 'TRACK';
   }
 
@@ -427,8 +433,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.slope = newFrame.slope;
     state.curvature = Math.abs(newFrame.signedCurvature);
     state.signedCurvature = newFrame.signedCurvature;
-    state.distToLeftRailMm = (state.lateralOffset - -0.0090) * 1000;
-    state.distToRightRailMm = (0.0090 - state.lateralOffset) * 1000;
+    state.distToLeftRailMm = (state.lateralOffset + RAIL_LAT) * 1000;
+    state.distToRightRailMm = (RAIL_LAT - state.lateralOffset) * 1000;
     state.railZone = computeRailZone(state.lateralOffset);
     state.activeKeysStr = computeActiveKeysStr();
     state.tangent.copy(newFrame.tangent);
@@ -838,7 +844,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       // guide the kart smoothly onto the 6.0mm inside apex line (just inside the 7.8mm FIA curb)
       // so holding D through a sweeping right turn hugs the clean apex instead of crashing into the inside rail!
       const insideProgress = turnRight * state.lateralOffset;
-      const apexTargetOffset = 0.0058; // 5.8mm ideal inside racing line (curb starts at 7.8mm)
+      const apexTargetOffset = CURB_LAT - 0.0020; // Ideal inside racing line, 2mm inside the curb
 
       let targetYaw = 0.0;
       if (turnRight === 0) {
@@ -922,13 +928,13 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       if (
         state.railImpactActive ||
         state.speed <= 0.08 ||
-        Math.abs(state.lateralOffset) >= 0.0089
+        Math.abs(state.lateralOffset) >= RAIL_LAT - 0.0001
       ) {
         state.cornerCleanTimer = 0.0;
       } else if (
         Math.abs(frame.signedCurvature) > 0.35 &&
         state.speed > 0.11 &&
-        Math.abs(state.lateralOffset) < 0.0085 &&
+        Math.abs(state.lateralOffset) < RAIL_LAT - 0.0005 &&
         !state.railImpactActive
       ) {
         state.cornerCleanTimer += clampedDt;
@@ -963,28 +969,29 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       Math.abs(frame.signedCurvature) > 0.35 &&
       signLatCurrent * frame.signedCurvature > 0;
     state.angledIntoRail =
-      absLat >= 0.0078 &&
+      absLat >= CURB_LAT &&
       !isInsideApexRail &&
       ((signLatCurrent > 0 && state.headingYaw < -0.05) ||
         (signLatCurrent < 0 && state.headingYaw > 0.05));
     state.steeringAway =
-      absLat >= 0.0078 &&
+      absLat >= CURB_LAT &&
       ((signLatCurrent > 0 && turnRight < 0) || (signLatCurrent < 0 && turnRight > 0));
 
-    if (absLat < 0.0086) {
+    if (absLat < RAIL_LAT - 0.0004) {
       state.railImpactActive = false;
     }
 
-    if (absLat >= 0.0078 && absLat < 0.0090) {
-      // Stage 1 — Red/White Curbs (0.0078 <= |lateralOffset| < 0.0090)
-      state.curbRumble = THREE.MathUtils.clamp((absLat - 0.0078) / 0.0012, 0.0, 1.0);
+    if (absLat >= CURB_LAT && absLat < RAIL_LAT) {
+      // Stage 1 — Red/White Curbs
+      state.curbRumble = THREE.MathUtils.clamp((absLat - CURB_LAT) / (RAIL_LAT - CURB_LAT), 0.0, 1.0);
       if (!isAiCruise && !isInsideApexRail) {
-        state.speed *= 1.0 - 0.12 * state.curbRumble * clampedDt;
+        state.speed *= 1.0 - 0.08 * state.curbRumble * clampedDt;
       }
-    } else if (absLat >= 0.0090) {
-      // Stage 2 — Guardrail Contact (|lateralOffset| >= 0.0090)
+    } else if (absLat >= RAIL_LAT) {
+      // Stage 2 — Guardrail contact. The rail is a cushioned barrier: it deflects the kart back
+      // onto the road with a spark-throwing scrape and scrubs some speed, but never pins or stops it.
       const signLat = Math.sign(state.lateralOffset) || 1;
-      state.lateralOffset = signLat * 0.0090;
+      state.lateralOffset = signLat * RAIL_LAT;
       state.lateralVel = 0.0;
 
       if (!isAiCruise) {
@@ -994,73 +1001,40 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
           (signLat > 0 && turnRight < 0) || (signLat < 0 && turnRight > 0);
         const steeringIntoWall =
           (signLat > 0 && turnRight > 0) || (signLat < 0 && turnRight < 0);
+        state.angledIntoRail = false;
+        state.railImpactActive = false;
+        state.steeringAway = steeringAway;
 
         if (insideApexContact && !steeringIntoWall) {
-          // Gliding along the INSIDE apex of a corner: align nose parallel to the apex curb without stopping!
-          state.lateralOffset = signLat * 0.0085;
+          // Gliding along the INSIDE apex of a corner: align nose parallel to the curb without losing speed
+          state.lateralOffset = signLat * (RAIL_LAT - 0.0005);
           state.headingYaw = signLat > 0
             ? Math.max(0.0, state.headingYaw)
             : Math.min(0.0, state.headingYaw);
           state.curbRumble = 0.5;
-          state.angledIntoRail = false;
-          state.steeringAway = steeringAway;
         } else {
-          // Hitting the OUTSIDE guardrail or brushing a wall:
-          // Distinguish between a Shallow Wall-Graze (< 9.5° / 0.165 rad) and a Hard Nose-In Crash (>= 9.5°):
-          const wallIncidenceRad = -signLat * state.headingYaw;
-          const hardCrashIntoWall =
-            wallIncidenceRad >= 0.165 ||
-            (steeringIntoWall && Math.abs(frame.signedCurvature) < 0.35);
+          // Angle (rad) at which the nose points into the barrier
+          const incidence = Math.max(0.0, -signLat * state.headingYaw);
+          // Bounce the nose back toward the centre of the road; harder hits bounce further
+          const bounceYaw = THREE.MathUtils.clamp(0.05 + incidence * 0.55, 0.05, steeringAway ? 0.20 : 0.15);
+          state.headingYaw = signLat * bounceYaw;
+          state.lateralOffset = signLat * (RAIL_LAT - 0.0003);
+          state.curbRumble = 0.85;
+          state.isDrifting = true; // Throw sparks off the rail
+          state.driftDir = -signLat;
+          // Grinding along the barrier is forgiving but slow: continuous friction while in contact
+          state.speed = Math.max(0.0, state.speed - RAIL_SCRAPE_DRAG * clampedDt);
 
-          if (!hardCrashIntoWall && !steeringAway) {
-            // Shallow Wall-Graze (< 9.5°): spark-throwing rail brush that bounces the nose ~3.7° back onto the lane!
-            state.lateralOffset = signLat * 0.0084;
-            state.headingYaw = signLat * 0.065;
-            state.curbRumble = 0.85;
-            state.isDrifting = true;
-            state.driftDir = -signLat;
-            state.angledIntoRail = false;
-            state.steeringAway = false;
-            if (state.railHitCooldown <= 0.0) {
-              state.railHitCooldown = 0.22;
-              state.speed *= 0.88;
-              state.hopVel = Math.max(state.hopVel, 0.005);
-              if (onRailImpactCallback) onRailImpactCallback(0.28);
-            }
-          } else {
-            // Hard Nose-In Crash (>= 9.5° from failing to steer for a corner): heavy guardrail stop penalty
-            state.boostActive = 0.0;
+          if (state.railHitCooldown <= 0.0) {
+            state.railHitCooldown = 0.25;
+            // ~4% scrub for a brush, up to ~22% for a head-on smack
+            const scrub = THREE.MathUtils.clamp(0.04 + incidence * 0.75, 0.04, 0.22);
+            state.speed *= 1.0 - scrub;
             state.cornerCleanTimer = 0.0;
-            const angledIntoRail = hardCrashIntoWall;
-            state.angledIntoRail = angledIntoRail;
-            state.steeringAway = steeringAway;
-
-            if (!state.railImpactActive && angledIntoRail && !steeringAway) {
-              state.railImpactActive = true;
-              state.railHitCooldown = 0.25;
-              const impactSeverity = THREE.MathUtils.clamp(
-                0.5 +
-                  Math.abs(state.headingYaw) * 1.2 +
-                  (Math.abs(state.speed) / manualMaxSpeed) * 0.4,
-                0.4,
-                1.0
-              );
-              state.speed *= 0.42;
-              state.hopVel = Math.max(state.hopVel, 0.010);
-              if (onRailImpactCallback) onRailImpactCallback(impactSeverity);
-            }
-
-            if (angledIntoRail && !steeringAway) {
-              // Keep realistic 12.5° nose-in scrape angle (never snap to 26°-43°) and brake to a stop against the barrier
-              state.headingYaw = -signLat * THREE.MathUtils.clamp(Math.abs(state.headingYaw), 0.14, 0.22);
-              state.speed = Math.max(0.0, state.speed - 0.55 * clampedDt);
-              state.curbRumble = 1.0;
-            } else if (steeringAway) {
-              // Player pressed the inward steering key (D off L-RAIL, or A off R-RAIL): peel smoothly off the barrier!
-              state.railImpactActive = false;
-              state.headingYaw = signLat * 0.13; // Gentle 7.5° peel-away angle toward track center
-              state.lateralOffset = signLat * 0.0083;
-              state.speed = Math.max(state.speed, 0.085 * state.topSpeedMultiplier);
+            if (incidence > 0.15) state.boostActive = 0.0;
+            state.hopVel = Math.max(state.hopVel, 0.004 + incidence * 0.01);
+            if (onRailImpactCallback) {
+              onRailImpactCallback(THREE.MathUtils.clamp(0.22 + incidence * 1.6, 0.22, 0.85));
             }
           }
         }
@@ -1193,5 +1167,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     getGridSlot,
     getRaceProgress,
     computeCruiseSpeedFactor,
+    curbLateral: CURB_LAT,
+    railLateral: RAIL_LAT,
   };
 }

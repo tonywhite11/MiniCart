@@ -32,13 +32,13 @@ const BOOST_SPEED = 0.289;
 // Collision footprint at the 1P kart scale (0.38x of the 18mm x 12mm kart)
 const KART_LENGTH = 0.0070;
 const KART_WIDTH = 0.0050;
-const MAX_LATERAL = 0.0072; // Stay off the curbs (curb starts at 7.8mm)
-const PLAYER_MAX_LATERAL = 0.0089; // Player rail contact
 
 const PROCEDURAL_BODY_HEX = 0xff2b1e;
 
 export function createRivalField({ scene, sparkScene, physics, playerKartRoot }) {
   const L = physics.totalLength;
+  const MAX_LATERAL = physics.curbLateral - 0.0006; // Rivals stay just inside the curbs
+  const PLAYER_MAX_LATERAL = physics.railLateral; // Player rail contact
   const SF = physics.startFinishArc;
   const gridSlots = [];
   for (let i = 0; i < physics.gridSize; i++) {
@@ -128,7 +128,7 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
       r.finished = false;
       r.finishOrder = 0;
       r.finishTime = null;
-      r.laneBias = (Math.random() * 2 - 1) * 0.0022;
+      r.laneBias = (Math.random() * 2 - 1) * MAX_LATERAL * 0.45;
       r.headingYaw = 0;
       syncPose(r, 0);
     }
@@ -173,7 +173,7 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
 
     // Racing line: inside-apex hint + personal lane bias that wanders slowly
     let desiredLateral = THREE.MathUtils.clamp(
-      -frame.signedCurvature * 0.0011 + r.laneBias + Math.sin(r.distance * 3.1 + r.skill * 40) * 0.0012,
+      -frame.signedCurvature * 0.0011 + r.laneBias + Math.sin(r.distance * 3.1 + r.skill * 40) * MAX_LATERAL * 0.2,
       -MAX_LATERAL,
       MAX_LATERAL
     );
