@@ -17,6 +17,7 @@ import { buildGoldenHourAtmosphere } from './scene/GoldenHourAtmosphere.js';
 import { buildRoomEnvironment } from './scene/RoomEnvironmentBuilder.js';
 import { createKartPhysicsController } from './physics/KartPhysicsController.js';
 import { createWebAudioSynth } from './audio/WebAudioSynth.js';
+import { createRivalField, cloneKartTemplate, ordinalSuffix } from './race/RivalKarts.js';
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
@@ -630,6 +631,10 @@ async function initApp() {
     }
   }
 
+  // AI rival field (created once physics is ready; the kart GLB may arrive before that)
+  let rivals = null;
+  let rivalKartTemplate = null;
+
   const REMOTE_GLB_BASE_URL = 'https://www.gstatic.com/aistudio/starter-apps/desk-racer/models';
   const PROXY_GLB_BASE_URL = '/api/gstatic-models';
   const ASSETS_GLB_BASE_URL = '/assets/models';
@@ -736,6 +741,9 @@ async function initApp() {
       glbContainerGroup.add(glbScene);
     });
     tryLoadGlbAsset('kart_1to87.glb', 'kart', (glbScene) => {
+      // Snapshot pristine materials for the rivals before the player kart restyles them
+      rivalKartTemplate = cloneKartTemplate(glbScene);
+      if (rivals) rivals.attachGlbKart(rivalKartTemplate);
       microKart.attachGlbKart(glbScene);
       syncKartScaleForCamera(activeCameraMode);
     });
@@ -805,6 +813,22 @@ async function initApp() {
 
   let camShakeTimer = 0.0;
   let camShakeIntensity = 0.0;
+
+  rivals = createRivalField({
+    scene,
+    sparkScene,
+    physics,
+    playerKartRoot: microKart.kartRoot,
+  });
+  if (rivalKartTemplate) rivals.attachGlbKart(rivalKartTemplate);
+  if (import.meta.env && import.meta.env.DEV) {
+    window.__minicart = { physics, rivals };
+  }
+  rivals.onPlayerBump((strength) => {
+    if (audioSynth.playRailImpact) audioSynth.playRailImpact(strength * 0.6);
+    camShakeTimer = 0.12;
+    camShakeIntensity = THREE.MathUtils.clamp(strength, 0.3, 0.7);
+  });
 
   if (physics.onRailImpact) {
     physics.onRailImpact((severity = 0.7) => {
@@ -1855,6 +1879,24 @@ async function initApp() {
       radarCtx.drawImage(radarBgCanvas, 0, 0);
     }
 
+    // Rival dots (drawn under the player's cyan dot)
+    if (rivals) {
+      for (const r of rivals.rivals) {
+        if (!r.kart.kartRoot.visible) continue;
+        const p = r.kart.kartRoot.position;
+        const rx = mapMinimapX(p.x, p.y, p.z);
+        const ry = mapMinimapY(p.x, p.y, p.z);
+        radarCtx.fillStyle = 'rgba(0, 10, 20, 0.6)';
+        radarCtx.beginPath();
+        radarCtx.arc(rx, ry, 9.0, 0, Math.PI * 2);
+        radarCtx.fill();
+        radarCtx.fillStyle = `#${r.color.toString(16).padStart(6, '0')}`;
+        radarCtx.beginPath();
+        radarCtx.arc(rx, ry, 7.0, 0, Math.PI * 2);
+        radarCtx.fill();
+      }
+    }
+
     const kx = mapMinimapX(st.position.x, st.position.y, st.position.z);
     const ky = mapMinimapY(st.position.x, st.position.y, st.position.z);
 
@@ -1952,8 +1994,46 @@ async function initApp() {
     }
   }
 
+  const elFinishTitle = document.getElementById('hud-finish-title');
+  const elFinishStandings = document.getElementById('hud-finish-standings');
+  let lastStandingsKey = '';
+
+  function renderFinishStandings() {
+    if (!elFinishStandings) return;
+    const standings = rivals.getStandings();
+    const key = standings.map((e) => `${e.id}:${e.finished ? 1 : 0}`).join('|');
+    if (key === lastStandingsKey) return;
+    lastStandingsKey = key;
+    elFinishStandings.innerHTML = '';
+    standings.forEach((e, i) => {
+      const li = document.createElement('li');
+      li.className = 'finish-standing-row' + (e.isPlayer ? ' is-player' : '') + (e.finished ? '' : ' is-running');
+      const pos = document.createElement('span');
+      pos.className = 'finish-standing-pos';
+      pos.textContent = `${i + 1}${ordinalSuffix(i + 1)}`;
+      const dot = document.createElement('span');
+      dot.className = 'finish-standing-dot';
+      dot.style.background = `#${e.color.toString(16).padStart(6, '0')}`;
+      const name = document.createElement('span');
+      name.className = 'finish-standing-name';
+      name.textContent = e.name;
+      const status = document.createElement('span');
+      status.className = 'finish-standing-status';
+      status.textContent = e.finished ? 'FINISHED' : 'RACING';
+      li.append(pos, dot, name, status);
+      elFinishStandings.appendChild(li);
+    });
+  }
+
   function showFinishOverlay(totalTime, bestLap, playAudio = true) {
     hideLapSplit();
+    const place = rivals.notifyPlayerFinished();
+    if (elFinishTitle) {
+      elFinishTitle.textContent = `${place}${ordinalSuffix(place)} PLACE`;
+      elFinishTitle.classList.toggle('is-winner', place === 1);
+    }
+    lastStandingsKey = '';
+    renderFinishStandings();
     if (elFinishTime) {
       elFinishTime.textContent = formatLapTimerMMSSCC(totalTime);
     }
@@ -2121,7 +2201,7 @@ async function initApp() {
     if (isCircuitReady) {
       btnWelcomeStart.classList.remove('is-warming-up', 'is-queued');
       if (elWelcomeProgressFill) elWelcomeProgressFill.style.width = '100%';
-      if (elWelcomeStartText) elWelcomeStartText.textContent = 'START TIME TRIAL';
+      if (elWelcomeStartText) elWelcomeStartText.textContent = 'START RACE';
       if (elWelcomeEnterKbd) elWelcomeEnterKbd.textContent = 'ENTER ↵';
       focusWelcomeStartButton();
       return;
@@ -2142,7 +2222,7 @@ async function initApp() {
     }
     if (elWelcomeStartText) {
       elWelcomeStartText.textContent = pendingRaceStartAfterWarmup
-        ? 'STARTING TIME TRIAL...'
+        ? 'STARTING RACE...'
         : 'PREPARING CIRCUIT...';
     }
     if (elWelcomeEnterKbd) {
@@ -2442,6 +2522,29 @@ async function initApp() {
   let lastLapTimerStr = '';
   let lastVisorStr = '';
 
+  const elPosNum = document.getElementById('hud-pos-num');
+  const elPosSuffix = document.getElementById('hud-pos-suffix');
+  const elPosTotal = document.getElementById('hud-pos-total');
+  let lastPosDisplay = -1;
+  let lastStandingsRefresh = 0;
+
+  function updatePositionHUD() {
+    const pos = rivals.getPlayerPosition();
+    if (pos !== lastPosDisplay && elPosNum) {
+      lastPosDisplay = pos;
+      elPosNum.textContent = String(pos);
+      if (elPosSuffix) elPosSuffix.textContent = ordinalSuffix(pos);
+      if (elPosTotal) elPosTotal.textContent = String(rivals.fieldSize);
+    }
+    if (finishOverlayShown) {
+      const now = performance.now();
+      if (now - lastStandingsRefresh > 250) {
+        lastStandingsRefresh = now;
+        renderFinishStandings();
+      }
+    }
+  }
+
   function updateHUD(st) {
     if (activeCameraMode !== 1 && activeCameraMode !== 2) return;
     // 1:150 N-Scale Speed in km/h (calibrated so 0.204 m/s cruise = 75 km/h, 0.289 m/s boost = 106 km/h)
@@ -2697,6 +2800,7 @@ async function initApp() {
 
     // 1. Step 60FPS Rapier3D + Banked Coaster Spline Physics
     const st = physics.stepPhysics(dt);
+    rivals.update(isScreenshotMode ? 1 / 60 : dt);
 
     // 2. Sync 1:87 Micro-Kart Transform, Wheels, Helmeted Driver & Drift Sparks
     microKart.kartRoot.position.copy(st.position);
@@ -2781,6 +2885,7 @@ async function initApp() {
     // 5. Update WebAudio Synth & HUD
     audioSynth.update(st);
     updateHUD(st);
+    updatePositionHUD();
 
     if (isScreenshotMode) {
       if (window.__deskRacerFontsReady === undefined) {

@@ -42,6 +42,9 @@
           <div class="hud-top-right-row">
             <!-- Top-Right Lap Counter & Lap Timer (Visible in 1P & 2P Views) -->
             <div id="hud-lap-widget" class="hud-lap-widget">
+              <div id="hud-pos" class="hud-pos" aria-label="Race position">
+                <span id="hud-pos-num" class="hud-pos-num">6</span><span id="hud-pos-suffix" class="hud-pos-suffix">TH</span><span class="hud-pos-total">/<span id="hud-pos-total">6</span></span>
+              </div>
               <div id="hud-lap-header" class="hud-lap-header">
                 LAP <span id="hud-lap-curr" class="hud-lap-curr">1</span>/3
               </div>
@@ -77,7 +80,7 @@
       <!-- Welcome & Controls Dialog (Shown on Launch & When Clicking "MiniCart") -->
       <div id="welcome-dialog-overlay" class="welcome-dialog-overlay">
         <div class="welcome-dialog-card" role="dialog" aria-labelledby="welcome-title">
-          <div class="welcome-eyebrow">DESKTOP CIRCUIT · 3 LAPS</div>
+          <div class="welcome-eyebrow">DESKTOP CIRCUIT · 3 LAPS · 6 RACERS</div>
           <h1 id="welcome-title" class="welcome-title">MINICART</h1>
 
           <div class="welcome-controls-grid">
@@ -121,7 +124,7 @@
 
           <div class="welcome-footer-row">
             <button id="btn-welcome-start" class="welcome-start-btn" type="button">
-              <span id="welcome-start-text" class="welcome-start-text">START TIME TRIAL</span>
+              <span id="welcome-start-text" class="welcome-start-text">START RACE</span>
               <kbd id="welcome-enter-kbd" class="welcome-enter-kbd">ENTER ↵</kbd>
               <span class="welcome-btn-progress-track" aria-hidden="true">
                 <span id="welcome-btn-progress-fill" class="welcome-btn-progress-fill"></span>
@@ -140,6 +143,7 @@
           <h2 id="hud-finish-title" class="hud-finish-title">FINISH</h2>
           <div id="hud-finish-time" class="hud-finish-time">00:00.00</div>
           <div id="hud-finish-sub" class="hud-finish-sub">BEST LAP 00:00.00</div>
+          <ol id="hud-finish-standings" class="finish-standings" aria-label="Race results"></ol>
           <div class="finish-actions-row">
             <button id="btn-finish-race-again" class="welcome-start-btn finish-action-btn" type="button">
               <span class="welcome-start-text">RACE AGAIN</span>

@@ -248,6 +248,72 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     return out;
   }
 
+  function computeSlopeSpeedDelta(frame) {
+    return THREE.MathUtils.clamp(
+      frame.slope > 0 ? -frame.slope * 0.68 : -frame.slope * 0.42,
+      -0.25,
+      0.18
+    );
+  }
+
+  /**
+   * Fraction of cruise speed a computer driver should hold at arc-length `sVal`
+   * (shared by Autopilot and the AI rival karts). Slows through the Cat Helix and
+   * Lamp Corkscrew envelopes and any tight curvature; ~0.56..1.12.
+   */
+  function computeCruiseSpeedFactor(sVal, frame = sampleTrackAtArcLength(sVal, _nextSampleOut)) {
+    const sWrapped = ((sVal % totalLength) + totalLength) % totalLength;
+    const curvatureNorm = THREE.MathUtils.clamp(Math.abs(frame.signedCurvature) / 1.25, 0.0, 1.0);
+    const inCatEnvelope =
+      THREE.MathUtils.smoothstep(sWrapped, 0.40, 0.56) *
+      (1.0 - THREE.MathUtils.smoothstep(sWrapped, 1.20, 1.38));
+    const inLampEnvelope =
+      THREE.MathUtils.smoothstep(sWrapped, 1.46, 1.64) *
+      (1.0 - THREE.MathUtils.smoothstep(sWrapped, 2.34, 2.52));
+    const catProgress = THREE.MathUtils.clamp((sWrapped - 0.46) / 0.86, 0.0, 1.0);
+    const catDynamicSlowdown =
+      inCatEnvelope *
+      (0.34 * Math.exp(-Math.pow((catProgress - 0.24) / 0.26, 2.0)) +
+        0.14 * (1.0 - catProgress) +
+        0.045 * Math.sin(catProgress * Math.PI * 3.0));
+    const lampProgress = THREE.MathUtils.clamp((sWrapped - 1.50) / 0.98, 0.0, 1.0);
+    const lampDynamicSlowdown =
+      inLampEnvelope *
+      (0.36 * Math.exp(-Math.pow((lampProgress - 0.38) / 0.28, 2.0)) +
+        0.12 * (1.0 - lampProgress) +
+        0.05 * Math.cos(lampProgress * Math.PI * 2.5));
+    const throttleCadenceWave =
+      0.032 * Math.sin(sWrapped * 11.2) + 0.021 * Math.cos(sWrapped * 18.7);
+
+    const baseSlowdown = Math.max(catDynamicSlowdown, lampDynamicSlowdown, curvatureNorm * 0.24);
+    return THREE.MathUtils.clamp(
+      1.0 - baseSlowdown + computeSlopeSpeedDelta(frame) + throttleCadenceWave,
+      0.56,
+      1.12
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // STARTING GRID (player + AI rivals, two staggered columns behind the line)
+  // -------------------------------------------------------------------------
+  const GRID_FIRST_ROW_GAP = 0.025; // Front row sits 25mm behind the checkered stripes
+  const GRID_ROW_SPACING = 0.016; // 16mm between rows
+  const GRID_LANE_OFFSET = 0.0034; // ±3.4mm from the centreline
+  const GRID_ROWS = 3; // 6 karts: 2 per row
+  const PLAYER_GRID_SLOT = GRID_ROWS * 2 - 1; // Player starts at the back (slot index 5 → 6th)
+
+  /** Arc-length + lateral offset for a starting-grid slot (0 = pole). */
+  function getGridSlot(slotIndex) {
+    const row = Math.floor(slotIndex / 2);
+    const lane = slotIndex % 2 === 0 ? -1 : 1;
+    const s = startFinishArc - GRID_FIRST_ROW_GAP - row * GRID_ROW_SPACING - (lane > 0 ? 0.004 : 0);
+    return {
+      s: ((s % totalLength) + totalLength) % totalLength,
+      lateralOffset: lane * GRID_LANE_OFFSET,
+    };
+  }
+  sectorStartArcs[6] = getGridSlot(PLAYER_GRID_SLOT).s;
+
   // -------------------------------------------------------------------------
   // VEHICLE STATE & INPUT LISTENERS
   // -------------------------------------------------------------------------
@@ -272,7 +338,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
 
   const state = {
     s: sectorStartArcs[6], // Start on Sector 6 G915 Viaduct approaching Start/Finish gantry
-    lateralOffset: 0.0, // -0.0078m to +0.0078m across the 22mm roadbed
+    lateralOffset: getGridSlot(PLAYER_GRID_SLOT).lateralOffset, // -0.0078m to +0.0078m across the 22mm roadbed
     lateralVel: 0.0,
     speed: 0.0, // Stationary (0.0 m/s) in Manual Mode at startup until player presses W/Up or P
     headingYaw: 0.0, // World-differential heading yaw relative to track tangent (clamped to [-1.05, +1.05] = ±60°)
@@ -332,6 +398,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   let onModeChangeCallback = null;
   let onRaceFinishCallback = null;
   let onRailImpactCallback = null;
+  let onResetCallback = null;
 
   function computeActiveKeysStr() {
     return (
@@ -427,7 +494,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   function teleportToSector(sectorNum) {
     const targetArc = sectorStartArcs[sectorNum] ?? sectorStartArcs[6] ?? 0.0;
     state.s = targetArc;
-    state.lateralOffset = 0.0;
+    state.lateralOffset = sectorNum === 6 ? getGridSlot(PLAYER_GRID_SLOT).lateralOffset : 0.0;
     state.lateralVel = 0.0;
     state.headingYaw = 0.0;
     state.turnRight = 0.0;
@@ -470,6 +537,19 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.angledIntoRail = false;
     state.steeringAway = false;
     teleportToSector(6);
+    if (onResetCallback) onResetCallback();
+  }
+
+  /**
+   * Continuous race distance in metres from the start/finish line
+   * (negative on the grid, 3 * totalLength at the flag). Used to rank karts.
+   */
+  function getRaceProgress() {
+    if (state.raceFinished && state.finishTotalTime !== null) return 3 * totalLength;
+    let offset = (((state.s - startFinishArc) % totalLength) + totalLength) % totalLength;
+    // Still on the grid side of the line for this lap (hasn't crossed yet)
+    if (state.lapDistance < totalLength * 0.5 && offset > totalLength * 0.5) offset -= totalLength;
+    return (state.lapCount - 1) * totalLength + offset;
   }
 
   function notifyLightsOut() {
@@ -657,47 +737,10 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     }
 
     // Longitudinal speed update
-    const sWrapped = ((state.s % totalLength) + totalLength) % totalLength;
-    const curvatureNorm = THREE.MathUtils.clamp(Math.abs(frame.signedCurvature) / 1.25, 0.0, 1.0);
-    const inCatEnvelope =
-      THREE.MathUtils.smoothstep(sWrapped, 0.40, 0.56) *
-      (1.0 - THREE.MathUtils.smoothstep(sWrapped, 1.20, 1.38));
-    const inLampEnvelope =
-      THREE.MathUtils.smoothstep(sWrapped, 1.46, 1.64) *
-      (1.0 - THREE.MathUtils.smoothstep(sWrapped, 2.34, 2.52));
-    // AI cruise speed envelopes for Cat Helix & Lamp Corkscrew
-    const catProgress = THREE.MathUtils.clamp((sWrapped - 0.46) / 0.86, 0.0, 1.0);
-    const catDynamicSlowdown =
-      inCatEnvelope *
-      (0.34 * Math.exp(-Math.pow((catProgress - 0.24) / 0.26, 2.0)) +
-        0.14 * (1.0 - catProgress) +
-        0.045 * Math.sin(catProgress * Math.PI * 3.0));
-    const lampProgress = THREE.MathUtils.clamp((sWrapped - 1.50) / 0.98, 0.0, 1.0);
-    const lampDynamicSlowdown =
-      inLampEnvelope *
-      (0.36 * Math.exp(-Math.pow((lampProgress - 0.38) / 0.28, 2.0)) +
-        0.12 * (1.0 - lampProgress) +
-        0.05 * Math.cos(lampProgress * Math.PI * 2.5));
-
-    const throttleCadenceWave =
-      0.032 * Math.sin(sWrapped * 11.2) + 0.021 * Math.cos(sWrapped * 18.7);
-    const slopeSpeedDelta = THREE.MathUtils.clamp(
-      frame.slope > 0 ? -frame.slope * 0.68 : -frame.slope * 0.42,
-      -0.25,
-      0.18
-    );
+    const slopeSpeedDelta = computeSlopeSpeedDelta(frame);
 
     if (isAiCruise) {
-      const baseSlowdown = Math.max(
-        catDynamicSlowdown,
-        lampDynamicSlowdown,
-        curvatureNorm * 0.24
-      );
-      const cornerSpeedFactor = THREE.MathUtils.clamp(
-        1.0 - baseSlowdown + slopeSpeedDelta + throttleCadenceWave,
-        0.56,
-        1.12
-      );
+      const cornerSpeedFactor = computeCruiseSpeedFactor(state.s, frame);
 
       const baseAutoSpeed = autopilotCruiseSpeed * cornerSpeedFactor;
       const targetAutoSpeed =
@@ -1140,5 +1183,15 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     onRailImpact: (cb) => {
       onRailImpactCallback = cb;
     },
+    onReset: (cb) => {
+      onResetCallback = cb;
+    },
+    totalLength,
+    startFinishArc,
+    gridSize: GRID_ROWS * 2,
+    playerGridSlot: PLAYER_GRID_SLOT,
+    getGridSlot,
+    getRaceProgress,
+    computeCruiseSpeedFactor,
   };
 }
