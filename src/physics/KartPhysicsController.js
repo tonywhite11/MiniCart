@@ -301,6 +301,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     wasCountdownLocked: false,
     launchWindowTimer: 0.0,
     lapCount: 1,
+    lapDistance: 0.0, // Track distance driven since the last lap boundary (guards against counting the grid roll-over as a lap)
     currentLapTime: 0.0,
     totalRaceTime: 0.0,
     lapTimes: [],
@@ -408,6 +409,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       state.totalRaceTime = 0.0;
       state.currentLapTime = 0.0;
       state.lapCount = 1;
+      state.lapDistance = 0.0;
       state.lapTimes = [];
       state.finishTotalTime = null;
       state.cornerCleanTimer = 0.0;
@@ -444,6 +446,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.lastRoadTurnDeg = 0.0;
     state.lastSteerTurnDeg = 0.0;
     state.boostActive = 0.0;
+    state.lapDistance = 0.0;
     state.speed = state.autopilot || state.victoryCruise ? 0.187 : 0.0;
     syncPoseFromSpline();
   }
@@ -454,6 +457,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.totalRaceTime = 0.0;
     state.currentLapTime = 0.0;
     state.lapCount = 1;
+    state.lapDistance = 0.0;
     state.lapTimes = [];
     state.finishTotalTime = null;
     state.raceClockActive = false;
@@ -1032,6 +1036,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       state.currentLapTime = 0.0;
       state.totalRaceTime = 0.0;
       state.lapCount = 1;
+      state.lapDistance = 0.0;
     } else if (!state.victoryCruise && !state.raceFinished) {
       if (state.currentLapTime > 0 && state.totalRaceTime < state.currentLapTime) {
         state.totalRaceTime = state.currentLapTime;
@@ -1043,7 +1048,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
         state.currentLapTime += clampedDt;
         state.totalRaceTime += clampedDt;
       }
-      if (state.speed > 0 && state.currentLapTime > 2.5) {
+      state.lapDistance += ds;
+      if (state.speed > 0 && state.currentLapTime > 2.5 && state.lapDistance > totalLength * 0.5) {
         const distBefore =
           ((startFinishArc - prevS) % totalLength + totalLength) % totalLength;
         if (distBefore > 0 && distBefore <= ds * 1.5) {
@@ -1053,6 +1059,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
           }
           state.lapTimes.push(state.lastLapTime);
           state.currentLapTime = 0.0;
+          state.lapDistance = 0.0;
 
           if (state.lapCount < 3) {
             const completedLap = state.lapCount;
