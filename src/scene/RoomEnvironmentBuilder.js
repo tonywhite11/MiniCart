@@ -100,8 +100,8 @@ function getRoomEnvironmentTextures(upgradeExternal = false) {
   }
 
   // -------------------------------------------------------------------------
-  // 1. HIGH-DPI "GEMINI 4" SCENTED CANDLE APOTHECARY LABEL (1024x1024)
-  //    Reads: PARFUM DE CODE / GEMINI 4 / 1:87 MICRO EDITION • 240G
+  // 1. HIGH-DPI "MINICART" SCENTED CANDLE APOTHECARY LABEL (1024x1024)
+  //    Reads: PARFUM DE CODE / MINICART / 1:87 MICRO EDITION • 240G
   // -------------------------------------------------------------------------
   const labelCanvas = document.createElement('canvas');
   labelCanvas.width = 1024;
@@ -153,10 +153,10 @@ function getRoomEnvironmentTextures(upgradeExternal = false) {
   lCtx.lineTo(692, ly + 158);
   lCtx.stroke();
 
-  // Hero Brand Title: GEMINI 4
+  // Hero Brand Title: MINICART
   lCtx.fillStyle = '#12100e';
   lCtx.font = '800 104px "Georgia", "Times New Roman", serif';
-  lCtx.fillText('GEMINI 4', 512, ly + 292);
+  lCtx.fillText('MINICART', 512, ly + 292);
 
   // Golden-hour star emblem
   lCtx.fillStyle = '#c29138';
@@ -170,7 +170,7 @@ function getRoomEnvironmentTextures(upgradeExternal = false) {
 
   lCtx.fillStyle = '#5c5146';
   lCtx.font = 'italic 24px "Georgia", serif';
-  lCtx.fillText('Hand-Poured in Mountain View & London', 512, ly + 548);
+  lCtx.fillText('Hand-Poured on the Desktop', 512, ly + 548);
 
   // Bottom divider & net weight
   lCtx.strokeStyle = '#1d1a16';

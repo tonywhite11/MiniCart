@@ -889,7 +889,7 @@ function drawPixelArtKartFourSprite(ctx, dstX, dstY, scale = 2.25) {
  * Generates the 2048x1152 High Scores monitor display texture for Camera View
  * 8:
  * - Pure black (#000000) screen background
- * - Italic retro pixel-art title "DESK RACER HIGH SCORES" with orange-to-white
+ * - Italic retro pixel-art title "MINICART HIGH SCORES" with orange-to-white
  * vertical gradient
  * - Custom-drawn 3/4 front-left pixel-art #4 Go-Kart on the coaster track
  * - 6 arcade leaderboard rows (Geneviève, Jay, Vamsi, Jack, Paige, Omar)
@@ -925,7 +925,7 @@ export function createHighScoreMonitorTexture() {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Top Italic Pixel-Art Header: "DESK RACER HIGH SCORES"
+    // 2. Top Italic Pixel-Art Header: "MINICART HIGH SCORES"
     const titleY = 114;
     ctx.save();
     ctx.translate(w * 0.5, titleY);
@@ -936,7 +936,7 @@ export function createHighScoreMonitorTexture() {
 
     // Dark pixel drop-shadow
     ctx.fillStyle = '#240802';
-    ctx.fillText('DESK RACER HIGH SCORES', 4, 4);
+    ctx.fillText('MINICART HIGH SCORES', 4, 4);
 
     // Orange -> Gold -> White vertical gradient across the title glyphs
     const titleGrad = ctx.createLinearGradient(0, -44, 0, 4);
@@ -947,7 +947,7 @@ export function createHighScoreMonitorTexture() {
     ctx.fillStyle = titleGrad;
     ctx.shadowColor = 'rgba(255, 110, 24, 0.36)';
     ctx.shadowBlur = 12;
-    ctx.fillText('DESK RACER HIGH SCORES', 0, 0);
+    ctx.fillText('MINICART HIGH SCORES', 0, 0);
     ctx.restore();
 
     // 3. Center Custom Pixel-Art #4 Kart Sprite on Coaster Track (276x168
