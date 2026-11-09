@@ -13,6 +13,16 @@
     <meta name="apple-mobile-web-app-title" content="MiniCart" />
     <meta name="theme-color" content="#080e20" />
     <title>MiniCart</title>
+    <script>
+      // Show on-screen driving buttons on any touch device (phones and iPads).
+      // iPadOS reports itself as a Mac, so check for touch support, not the device name.
+      (function () {
+        var q = new URLSearchParams(location.search).get("touch");
+        var touch = q === "1" || (q !== "0" && (navigator.maxTouchPoints > 0 ||
+          (window.matchMedia && matchMedia("(any-pointer: coarse)").matches)));
+        if (touch) document.documentElement.classList.add("touch-ui");
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -188,7 +198,7 @@
                 <li><span class="howto-kbds"><kbd class="welcome-key">M</kbd></span><span>Sound on / off</span></li>
                 <li><span class="howto-kbds"><kbd class="welcome-key welcome-key-wide">ESC</kbd></span><span>Menu</span></li>
               </ul>
-              <p class="howto-note howto-touch-note">On a phone: use the on-screen arrows, plus the DRIFT and ITEM buttons.</p>
+              <p class="howto-note howto-touch-note">On a phone or iPad, use the on-screen buttons. Holding DRIFT also keeps the gas on, so steer with your left thumb and hold DRIFT with your right.</p>
             </section>
 
             <section class="howto-section">

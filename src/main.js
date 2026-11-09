@@ -898,10 +898,16 @@ async function initGame() {
   const pointerDirs = new Map();
   let touchItemDown = false;
   function applyTouch() {
+    const held = (dir) => {
+      if (touchDirs.has(dir)) return true;
+      for (const d of pointerDirs.values()) if (d === dir) return true;
+      return false;
+    };
+    // Holding DRIFT also keeps the gas on: on a touch screen your right thumb
+    // can't press ACCEL and DRIFT at the same time.
+    const drifting = held('drift');
     for (const dir of ['left', 'right', 'forward', 'backward', 'drift']) {
-      let pressed = touchDirs.has(dir);
-      for (const d of pointerDirs.values()) if (d === dir) pressed = true;
-      physics.setTouchKey(dir, pressed);
+      physics.setTouchKey(dir, held(dir) || (dir === 'forward' && drifting && !held('backward')));
     }
     let itemPressed = touchDirs.has('item');
     for (const d of pointerDirs.values()) if (d === 'item') itemPressed = true;
