@@ -1869,3 +1869,19 @@ body {
 .howto-card .welcome-eyebrow {
   padding: 0 38px;
 }
+/* Arrow-key alternates shown next to WASD */
+.welcome-key-alt {
+  opacity: 0.9;
+  font-size: 1.15em;
+  font-weight: 800;
+  line-height: 1;
+  font-family: system-ui, sans-serif;
+  font-style: normal;
+}
+.control-kbd-pair .welcome-key:not(.welcome-key-alt) + .welcome-key-alt,
+.howto-kbds .welcome-key:not(.welcome-key-alt) + .welcome-key-alt {
+  margin-left: 6px;
+}
+.howto-kbds {
+  min-width: 132px;
+}
