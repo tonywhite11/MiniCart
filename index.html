@@ -112,6 +112,18 @@
                   </div>
                   <span>BRAKE</span>
                 </div>
+                <div class="control-key-row">
+                  <div class="control-kbd-pair">
+                    <kbd class="welcome-key welcome-key-wide">SPACE</kbd>
+                  </div>
+                  <span>DRIFT + STEER</span>
+                </div>
+                <div class="control-key-row">
+                  <div class="control-kbd-pair">
+                    <kbd class="welcome-key">E</kbd>
+                  </div>
+                  <span>USE ITEM</span>
+                </div>
               </div>
             </div>
 
@@ -128,12 +140,79 @@
           </div>
 
           <div class="welcome-footer-row">
+            <button id="btn-welcome-howto" class="welcome-start-btn finish-autopilot-btn howto-open-btn" type="button">
+              <span class="welcome-start-text">HOW TO PLAY</span>
+              <kbd class="welcome-enter-kbd">H</kbd>
+            </button>
             <button id="btn-welcome-start" class="welcome-start-btn" type="button">
               <span id="welcome-start-text" class="welcome-start-text">START RACE</span>
               <kbd id="welcome-enter-kbd" class="welcome-enter-kbd">ENTER ↵</kbd>
               <span class="welcome-btn-progress-track" aria-hidden="true">
                 <span id="welcome-btn-progress-fill" class="welcome-btn-progress-fill"></span>
               </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- How to Play -->
+      <div id="howto-overlay" class="welcome-dialog-overlay howto-overlay hidden">
+        <div class="welcome-dialog-card howto-card" role="dialog" aria-modal="true" aria-labelledby="howto-title">
+          <button id="btn-howto-close" class="howto-close" type="button" aria-label="Close how to play">✕</button>
+          <div class="welcome-eyebrow">3 LAPS · 6 RACERS · BEAT THE PACK</div>
+          <h2 id="howto-title" class="howto-title">HOW TO PLAY</h2>
+
+          <div class="howto-scroll">
+            <section class="howto-section">
+              <div class="welcome-control-label">1 · DRIVE</div>
+              <ul class="howto-keys">
+                <li><span class="howto-kbds"><kbd class="welcome-key">W</kbd></span><span>Accelerate</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key">A</kbd><kbd class="welcome-key">D</kbd></span><span>Steer</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key">S</kbd></span><span>Brake / reverse</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key welcome-key-wide">SPACE</kbd></span><span>Drift (hold while steering)</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key">E</kbd></span><span>Use item</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key welcome-key-cyan">1</kbd>–<kbd class="welcome-key welcome-key-cyan">4</kbd></span><span>Camera views</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key">M</kbd></span><span>Sound on / off</span></li>
+                <li><span class="howto-kbds"><kbd class="welcome-key welcome-key-wide">ESC</kbd></span><span>Menu</span></li>
+              </ul>
+              <p class="howto-note howto-touch-note">On a phone: use the on-screen arrows, plus the DRIFT and ITEM buttons.</p>
+            </section>
+
+            <section class="howto-section">
+              <div class="welcome-control-label">2 · DRIFT FOR TURBOS</div>
+              <p class="howto-text">Your speed comes from drifting. Going into a corner, <b>hold SPACE while steering</b>. The kart hops into a slide and its sparks change colour the longer you hold it. <b>Let go</b> to fire a turbo.</p>
+              <ul class="howto-tiers">
+                <li><i class="tier-dot t1"></i><b>BLUE</b> TURBO</li>
+                <li><i class="tier-dot t2"></i><b>ORANGE</b> SUPER TURBO</li>
+                <li><i class="tier-dot t3"></i><b>PINK</b> ULTRA TURBO</li>
+              </ul>
+              <p class="howto-note">Steering harder into the corner charges the turbo faster. Getting hit while you drift throws the turbo away.</p>
+            </section>
+
+            <section class="howto-section">
+              <div class="welcome-control-label">3 · ON THE TRACK</div>
+              <ul class="howto-list">
+                <li><b>Boost pads</b>: glowing arrows on the straights. Drive over one for a free burst of speed.</li>
+                <li><b>Item bubbles</b>: rows of floating bubbles with item pictures flicking around inside them. Drive through one to get a random item, then press <kbd class="welcome-key">E</kbd> to use it.</li>
+              </ul>
+            </section>
+
+            <section class="howto-section">
+              <div class="welcome-control-label">4 · ITEMS</div>
+              <ul id="howto-items" class="howto-items"></ul>
+              <p class="howto-note">Which items you get depends on your position. If you're leading you mostly get defensive ones. If you're behind you get the ones that help you catch up. Rivals use items too.</p>
+            </section>
+
+            <section class="howto-section">
+              <div class="welcome-control-label">5 · WIN</div>
+              <p class="howto-text">Finish 3 laps ahead of the other 5 karts. Each world has its own ladder: <b>win</b> to unlock the next difficulty, from <b>Rookie</b> up through <b>Pro</b> and <b>Expert</b> to <b>Champion</b>. On the harder levels, rivals use turbos out of corners as well, so you'll need to drift every corner.</p>
+            </section>
+          </div>
+
+          <div class="welcome-footer-row">
+            <button id="btn-howto-done" class="welcome-start-btn" type="button">
+              <span class="welcome-start-text">GOT IT</span>
+              <kbd class="welcome-enter-kbd">ENTER ↵</kbd>
             </button>
           </div>
         </div>
@@ -249,8 +328,14 @@
           </button>
         </div>
 
-        <!-- Right Side: Accelerate (W) and Brake (S) Icons -->
+        <!-- Right Side: Drift / Item, then Accelerate (W) and Brake (S) -->
         <div class="mobile-ctrl-cluster mobile-pedal-cluster" role="group" aria-label="Accelerate and Brake Controls">
+          <button id="btn-touch-item" class="mobile-ctrl-btn mobile-ctrl-item" type="button" data-control="item" aria-label="Use item (E)" title="Use item (E)">
+            <span class="mobile-ctrl-inner"><span class="mobile-ctrl-label">ITEM</span></span>
+          </button>
+          <button id="btn-touch-drift" class="mobile-ctrl-btn mobile-ctrl-drift" type="button" data-control="drift" aria-label="Drift (Space)" title="Drift (Space)">
+            <span class="mobile-ctrl-inner"><span class="mobile-ctrl-label">DRIFT</span></span>
+          </button>
           <button
             id="btn-touch-accel"
             class="mobile-ctrl-btn mobile-ctrl-accel"

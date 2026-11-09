@@ -354,18 +354,21 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     backward: false,
     left: false,
     right: false,
+    drift: false,
   };
   const kbKeys = {
     forward: false,
     backward: false,
     left: false,
     right: false,
+    drift: false,
   };
   const touchKeys = {
     forward: false,
     backward: false,
     left: false,
     right: false,
+    drift: false,
   };
 
   const state = {
@@ -388,6 +391,11 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     boostActive: 0.0, // remaining turbo boost timer
     hopHeight: 0.0,
     hopVel: 0.0,
+    driftCharge: 0.0, // seconds held in a manual drift
+    driftTier: 0, // 0 none, 1 blue, 2 orange, 3 pink mini-turbo
+    sparkTint: null, // [r,g,b] override for drift sparks
+    spinTimer: 0.0, // >0 while spun out by a hazard
+    spinYaw: 0.0, // visual spin angle (radians)
     curbRumble: 0.0,
     railImpactActive: false,
     railHitCooldown: 0.0,
@@ -430,7 +438,9 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   let onModeChangeCallback = null;
   let onRaceFinishCallback = null;
   let onRailImpactCallback = null;
-  let onResetCallback = null;
+  let onDriftBoostCallback = null;
+  let onDriftTierCallback = null;
+  const onResetCallbacks = [];
 
   function computeActiveKeysStr() {
     return (
@@ -537,6 +547,12 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.isDrifting = false;
     state.driftDir = 0;
     state.driftChargeTimer = 0.0;
+    state.driftCharge = 0.0;
+    state.driftTier = 0;
+    state.sparkTint = null;
+    state.spinTimer = 0.0;
+    state.spinYaw = 0.0;
+    state.isDrifting = false;
     state.cornerCleanTimer = 0.0;
     state.railImpactActive = false;
     state.railHitCooldown = 0.0;
@@ -569,7 +585,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.angledIntoRail = false;
     state.steeringAway = false;
     teleportToSector(6);
-    if (onResetCallback) onResetCallback();
+    for (const cb of onResetCallbacks) cb();
   }
 
   /**
@@ -600,6 +616,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     keys.backward = Boolean(kbKeys.backward || touchKeys.backward);
     keys.left = Boolean(kbKeys.left || touchKeys.left);
     keys.right = Boolean(kbKeys.right || touchKeys.right);
+    keys.drift = Boolean(kbKeys.drift || touchKeys.drift);
     state.activeKeysStr = computeActiveKeysStr();
   }
 
@@ -618,6 +635,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     touchKeys.backward = false;
     touchKeys.left = false;
     touchKeys.right = false;
+    touchKeys.drift = false;
     syncCombinedKeys();
   }
 
@@ -639,6 +657,9 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       } else if (code === 'KeyD' || code === 'ArrowRight') {
         kbKeys.right = true;
         if (state.autopilot) setAutopilot(false);
+      } else if (code === 'Space' || code === 'ShiftLeft' || code === 'ShiftRight') {
+        e.preventDefault();
+        kbKeys.drift = true;
       } else if (code === 'KeyP') {
         setAutopilot(!state.autopilot);
       } else if (code === 'KeyR') {
@@ -653,6 +674,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       else if (code === 'KeyS' || code === 'ArrowDown') kbKeys.backward = false;
       else if (code === 'KeyA' || code === 'ArrowLeft') kbKeys.left = false;
       else if (code === 'KeyD' || code === 'ArrowRight') kbKeys.right = false;
+      else if (code === 'Space' || code === 'ShiftLeft' || code === 'ShiftRight') kbKeys.drift = false;
       syncCombinedKeys();
     });
 
@@ -661,6 +683,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       kbKeys.backward = false;
       kbKeys.left = false;
       kbKeys.right = false;
+      kbKeys.drift = false;
       clearTouchKeys();
     });
   }
@@ -761,6 +784,15 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       turnRight = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
     }
 
+    // Spun out by a hazard: no control until the kart recovers
+    if (state.spinTimer > 0) {
+      state.spinTimer = Math.max(0, state.spinTimer - clampedDt);
+      state.spinYaw += clampedDt * 15.0 * Math.min(1, state.spinTimer / 0.25 + 0.2);
+      if (state.spinTimer === 0) state.spinYaw = 0;
+      throttle = 0;
+      turnRight = 0;
+    }
+
     if (state.boostActive > 0) {
       state.boostActive = Math.max(0.0, state.boostActive - clampedDt);
     } else if (!state.isDrifting) {
@@ -771,7 +803,9 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     // Longitudinal speed update
     const slopeSpeedDelta = computeSlopeSpeedDelta(frame);
 
-    if (isAiCruise) {
+    if (state.spinTimer > 0) {
+      state.speed = THREE.MathUtils.lerp(state.speed, 0.03, 1.0 - Math.exp(-3.0 * clampedDt));
+    } else if (isAiCruise) {
       const cornerSpeedFactor = computeCruiseSpeedFactor(state.s, frame);
 
       const baseAutoSpeed = autopilotCruiseSpeed * cornerSpeedFactor;
@@ -872,8 +906,40 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       const insideProgress = turnRight * state.lateralOffset;
       const apexTargetOffset = CURB_LAT - 0.0020; // Ideal inside racing line, 2mm inside the curb
 
+      // ---- Manual power-slide (hold Space/Shift + steer) ----
+      if (!state.isDrifting) {
+        if (keys.drift && turnRight !== 0 && state.speed > 0.09 && state.spinTimer <= 0 && !state.countdownLocked) {
+          state.isDrifting = true;
+          state.driftDir = Math.sign(turnRight);
+          state.driftCharge = 0.0;
+          state.driftTier = 0;
+          state.hopVel = 0.03; // little hop into the slide
+          if (state.hopHeight <= 0) state.hopHeight = 0.00001;
+        }
+      } else if (!keys.drift || state.speed < 0.07 || state.spinTimer > 0) {
+        // Release: fire the mini-turbo for whatever tier was reached
+        const tier = state.spinTimer > 0 ? 0 : state.driftTier;
+        state.isDrifting = false;
+        state.driftCharge = 0.0;
+        state.driftTier = 0;
+        if (tier > 0) {
+          state.boostActive = Math.max(state.boostActive, [0, 0.55, 1.0, 1.55][tier]);
+          if (onDriftBoostCallback) onDriftBoostCallback(tier);
+        }
+      } else {
+        const tighten = turnRight * state.driftDir; // +1 tightening, -1 widening, 0 neutral
+        state.driftCharge += clampedDt * (tighten > 0 ? 1.15 : tighten < 0 ? 0.7 : 0.9);
+        const prevTier = state.driftTier;
+        state.driftTier = state.driftCharge >= 2.0 ? 3 : state.driftCharge >= 1.2 ? 2 : state.driftCharge >= 0.55 ? 1 : 0;
+        if (state.driftTier > prevTier && onDriftTierCallback) onDriftTierCallback(state.driftTier);
+      }
+
       let targetYaw = 0.0;
-      if (turnRight === 0) {
+      if (state.isDrifting) {
+        const tighten = turnRight * state.driftDir;
+        const slideMag = 0.17 + 0.09 * tighten;
+        targetYaw = roadDriftYaw * 0.55 - state.driftDir * slideMag * steerSpeedFactor;
+      } else if (turnRight === 0) {
         // Holding W only (no steering): kart fails to turn with the corner and drifts outward into the outside rail!
         targetYaw = roadDriftYaw;
       } else if (isSteeringWithCorner) {
@@ -926,23 +992,21 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     );
 
     if (!isAiCruise) {
-      // Automatic Cornering Slip & Sparks when steering hard into a curve at speed
-      if (
-        Math.abs(state.steerInput) > 0.35 &&
-        Math.abs(frame.signedCurvature) > 0.30 &&
-        state.speed > 0.11
-      ) {
-        state.isDrifting = true;
-        state.driftDir = Math.sign(turnRight) || Math.sign(state.steerInput) || 1;
+      // Drift visuals: body kicks out, sparks change colour with the charge tier
+      if (state.isDrifting) {
         state.driftAngle = THREE.MathUtils.lerp(
           state.driftAngle,
-          -state.driftDir * 0.18,
+          -state.driftDir * 0.34,
           1.0 - Math.exp(-10.0 * clampedDt)
         );
-        state.boostCharge = Math.min(1.0, state.boostCharge + clampedDt * 0.32);
+        state.sparkTint = [
+          [1.0, 0.92, 0.75],
+          [0.35, 0.7, 1.0],
+          [1.0, 0.55, 0.1],
+          [1.0, 0.3, 0.95],
+        ][state.driftTier];
       } else {
-        state.isDrifting = false;
-        state.driftDir = 0;
+        state.sparkTint = null;
         state.driftAngle = THREE.MathUtils.lerp(
           state.driftAngle,
           0.0,
@@ -965,12 +1029,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       ) {
         state.cornerCleanTimer += clampedDt;
       } else if (Math.abs(frame.signedCurvature) < 0.26) {
-        if (state.cornerCleanTimer >= 0.42 && throttle > 0) {
-          state.boostActive = Math.max(state.boostActive, 0.65);
-          state.cornerCleanTimer = 0.0;
-        } else {
-          state.cornerCleanTimer = Math.max(0.0, state.cornerCleanTimer - clampedDt * 2.0);
-        }
+        state.cornerCleanTimer = Math.max(0.0, state.cornerCleanTimer - clampedDt * 2.0);
       }
     }
 
@@ -1184,7 +1243,23 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       onRailImpactCallback = cb;
     },
     onReset: (cb) => {
-      onResetCallback = cb;
+      onResetCallbacks.push(cb);
+    },
+    onDriftBoost: (cb) => {
+      onDriftBoostCallback = cb;
+    },
+    onDriftTier: (cb) => {
+      onDriftTierCallback = cb;
+    },
+    /** Turbo from a boost pad or item (seconds). */
+    addBoost(seconds) {
+      if (state.spinTimer > 0) return;
+      state.boostActive = Math.max(state.boostActive, seconds);
+    },
+    /** Spin the player out (hazard hit). */
+    spinOut(seconds = 0.9) {
+      state.spinTimer = Math.max(state.spinTimer, seconds);
+      state.boostActive = 0.0;
     },
     totalLength,
     startFinishArc,

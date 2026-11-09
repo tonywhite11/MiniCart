@@ -814,9 +814,16 @@ export function buildMicroKart() {
         sparkSizes[idx] = 0.65 + Math.random() * 1.15;
 
         // Warm Fire Spark Palette: incandescent gold-orange (#ffaa22) to fiery amber-red (#ff4e08)
-        sparkColors[idx * 3 + 0] = 1.0;
-        sparkColors[idx * 3 + 1] = 0.36 + Math.random() * 0.46;
-        sparkColors[idx * 3 + 2] = 0.04 + Math.random() * 0.14;
+        if (state.sparkTint) {
+          const j = 0.8 + Math.random() * 0.2;
+          sparkColors[idx * 3 + 0] = state.sparkTint[0] * j;
+          sparkColors[idx * 3 + 1] = state.sparkTint[1] * j;
+          sparkColors[idx * 3 + 2] = state.sparkTint[2] * j;
+        } else {
+          sparkColors[idx * 3 + 0] = 1.0;
+          sparkColors[idx * 3 + 1] = 0.36 + Math.random() * 0.46;
+          sparkColors[idx * 3 + 2] = 0.04 + Math.random() * 0.14;
+        }
       }
     }
 

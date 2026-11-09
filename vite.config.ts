@@ -57,6 +57,8 @@ const gstaticModelsProxy = {
 };
 
 export default defineConfig({
+  // Relative base so the build works from any folder (GitHub Pages, itch.io, etc.)
+  base: './',
   plugins: [fetchGstaticModelsOnBuild()],
   server: {
     port: 3000,

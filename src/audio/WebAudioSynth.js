@@ -84,7 +84,7 @@ function computeCrispRegimeWeights(f0) {
  * @return {!Object}
  */
 export function createDeskRacerHybridAudio(options = {}) {
-  const baseUrl = (options.baseUrl || '/assets/audio').replace(/\/$/, '');
+  const baseUrl = (options.baseUrl || `${import.meta.env.BASE_URL}assets/audio`).replace(/\/$/, '');
   const masterVolume = options.masterVolume ?? 0.28;
   const cacheBust = options.cacheBust || 'v=8';
 
@@ -824,6 +824,102 @@ export function createDeskRacerHybridAudio(options = {}) {
    * Plays a celebratory, triumphant 3-lap finish chord fanfare when crossing
    * the Start/Finish gantry at the end of Lap 3.
    */
+  /**
+   * Short synthesized arcade effects for items, pads and drift tiers.
+   * @param {string} kind
+   * @param {number=} value
+   */
+  function playSfx(kind, value = 0) {
+    if (!enabled || !ctx || ctx.state !== 'running' || !masterGain) return;
+    const now = ctx.currentTime;
+    const tone = (type, f0, f1, dur, gain, delay = 0) => {
+      const t0 = now + delay;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t0);
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(gain, t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g);
+      g.connect(masterGain);
+      o.start(t0);
+      o.stop(t0 + dur + 0.03);
+    };
+    const noise = (dur, gain, f0, f1, delay = 0) => {
+      const t0 = now + delay;
+      const len = Math.floor(ctx.sampleRate * dur);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const flt = ctx.createBiquadFilter();
+      flt.type = 'bandpass';
+      flt.Q.value = 1.2;
+      flt.frequency.setValueAtTime(f0, t0);
+      flt.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(gain, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(flt);
+      flt.connect(g);
+      g.connect(masterGain);
+      src.start(t0);
+    };
+    switch (kind) {
+      case 'pickup':
+        [660, 880, 1320].forEach((f, i) => tone('square', f, f, 0.07, 0.12, i * 0.05));
+        break;
+      case 'roll':
+        tone('square', 1200 + Math.random() * 400, 1100, 0.03, 0.05);
+        break;
+      case 'ready':
+        tone('triangle', 990, 1980, 0.16, 0.22);
+        break;
+      case 'boost':
+        noise(0.5, 0.5, 600, 4000);
+        tone('sawtooth', 180, 520, 0.4, 0.12);
+        break;
+      case 'tier':
+        tone('square', 700 + value * 260, 900 + value * 300, 0.09, 0.12);
+        break;
+      case 'turbo':
+        noise(0.35 + value * 0.12, 0.45, 800, 5000);
+        tone('sawtooth', 200 + value * 60, 600 + value * 160, 0.3 + value * 0.1, 0.12);
+        break;
+      case 'hit':
+        tone('sawtooth', 520, 90, 0.5, 0.28);
+        noise(0.3, 0.4, 2000, 300);
+        break;
+      case 'score':
+        tone('square', 880, 1760, 0.12, 0.14);
+        tone('square', 1320, 2640, 0.12, 0.1, 0.09);
+        break;
+      case 'shield':
+        tone('sine', 400, 1600, 0.35, 0.25);
+        tone('sine', 800, 2400, 0.3, 0.12, 0.05);
+        break;
+      case 'drop':
+        tone('sine', 300, 70, 0.25, 0.35);
+        break;
+      case 'zap':
+        tone('sawtooth', 2400, 300, 0.25, 0.14);
+        noise(0.2, 0.3, 6000, 1500);
+        break;
+      case 'pulse':
+        tone('sine', 120, 40, 0.6, 0.5);
+        noise(0.5, 0.35, 300, 3000);
+        break;
+      case 'overtake':
+        tone('triangle', 1200, 1500, 0.08, 0.12);
+        break;
+      default:
+        break;
+    }
+  }
+
   function playRaceFinishFanfare() {
     if (!enabled || !ctx || ctx.state !== 'running') return;
     const now = ctx.currentTime;
@@ -898,6 +994,7 @@ export function createDeskRacerHybridAudio(options = {}) {
     playRaceFinishFanfare,
     playRailImpact,
     playF1CountdownBeep,
+    playSfx,
     triggerSputterBurst,
     setRumbleAmount: (v) => {
       userRumbleAmount = Math.max(0.0, Math.min(2.5, Number(v)));

@@ -9,6 +9,7 @@ import { buildMicroKart } from './scene/MicroKartBuilder.js';
 import { createKartPhysicsController } from './physics/KartPhysicsController.js';
 import { createWebAudioSynth } from './audio/WebAudioSynth.js';
 import { createRivalField, cloneKartTemplate, ordinalSuffix } from './race/RivalKarts.js';
+import { createRaceItems, ITEM_ICONS, ITEMS } from './race/RaceItems.js';
 import { generateTrack } from './tracks/TrackGenerator.js';
 import { TRACK_DEFS, WORLD_ORDER } from './tracks/trackDefs.js';
 import { buildTrackMesh } from './tracks/TrackMeshBuilder.js';
@@ -119,8 +120,8 @@ async function initGame() {
   // Kart model (shared with the rivals, tinted per driver)
   const gltfLoader = new GLTFLoader();
   const kartUrls = [
-    '/assets/models/kart_1to87.glb',
-    '/api/gstatic-models/kart_1to87.glb',
+    `${import.meta.env.BASE_URL}assets/models/kart_1to87.glb`,
+    `${import.meta.env.BASE_URL}api/gstatic-models/kart_1to87.glb`,
     'https://www.gstatic.com/aistudio/starter-apps/desk-racer/models/kart_1to87.glb',
   ];
   const loadKart = (i) => {
@@ -154,8 +155,101 @@ async function initGame() {
     camShakeIntensity = THREE.MathUtils.clamp(strength, 0.3, 0.7);
   });
 
+  // ---------------------------------------------------------------------------
+  // Items, boost pads, drift turbos + arcade feedback
+  // ---------------------------------------------------------------------------
+  const items = createRaceItems({ scene, physics, rivals, playerKartRoot: kart.kartRoot, track, audio: audioSynth });
+  physics.onReset(() => items.reset());
+  const sfx = (k, v) => audioSynth.playSfx && audioSynth.playSfx(k, v);
+
+  const hudFx = document.createElement('div');
+  hudFx.id = 'hud-fx';
+  hudFx.innerHTML = `
+    <div id="speed-lines" class="speed-lines"></div>
+    <div id="hit-flash" class="hit-flash"></div>
+    <div id="hud-item" class="hud-item empty" aria-label="Item">
+      <div class="hud-item-icon" id="hud-item-icon"></div>
+      <div class="hud-item-uses" id="hud-item-uses"></div>
+      <div class="hud-item-key">E</div>
+    </div>
+    <div id="hud-toast" class="hud-toast"></div>
+    <div id="hud-drift" class="hud-drift"><span></span></div>`;
+  document.getElementById('hud-root').appendChild(hudFx);
+  const elSpeedLines = document.getElementById('speed-lines');
+  const elHitFlash = document.getElementById('hit-flash');
+  const elItem = document.getElementById('hud-item');
+  const elItemIcon = document.getElementById('hud-item-icon');
+  const elItemUses = document.getElementById('hud-item-uses');
+  const elToast = document.getElementById('hud-toast');
+  const elDrift = document.getElementById('hud-drift');
+
+  let toastTimer = null;
+  function toast(text, tone = 'good') {
+    elToast.textContent = text;
+    elToast.className = `hud-toast show ${tone}`;
+    void elToast.offsetWidth;
+    elToast.classList.add('pop');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => elToast.classList.remove('show', 'pop'), 1100);
+  }
+  function setItemSlot(item, uses) {
+    elItem.classList.toggle('empty', !item);
+    elItem.classList.remove('rolling');
+    elItemIcon.innerHTML = item ? ITEM_ICONS[item] : '';
+    elItemUses.textContent = item && uses > 1 ? `×${uses}` : '';
+    elItem.title = item ? ITEMS[item].name : '';
+  }
+  let rollTimer = null;
+  let rollDone = null;
+  items.on('roll', ({ item, uses, duration }) => {
+    const keys = Object.keys(ITEM_ICONS);
+    let n = 0;
+    elItem.classList.remove('empty');
+    elItem.classList.add('rolling');
+    clearInterval(rollTimer);
+    clearTimeout(rollDone);
+    rollTimer = setInterval(() => {
+      elItemIcon.innerHTML = ITEM_ICONS[keys[n++ % keys.length]];
+      sfx('roll');
+    }, 70);
+    rollDone = setTimeout(() => {
+      clearInterval(rollTimer);
+      setItemSlot(item, uses);
+      sfx('ready');
+      toast(ITEMS[item].name, 'item');
+    }, duration * 1000);
+  });
+  items.on('item', ({ item, uses }) => {
+    clearInterval(rollTimer);
+    clearTimeout(rollDone);
+    setItemSlot(item, uses);
+  });
+  items.on('toast', ({ text, tone }) => toast(text, tone));
+  items.on('playerHit', () => {
+    camShakeTimer = 0.4;
+    camShakeIntensity = 1.6;
+    elHitFlash.classList.remove('on');
+    void elHitFlash.offsetWidth;
+    elHitFlash.classList.add('on');
+  });
+  items.on('pad', () => {
+    fovKick = 1;
+  });
+
+  let fovKick = 0;
+  const TURBO_NAMES = ['', 'TURBO!', 'SUPER TURBO!', 'ULTRA TURBO!'];
+  physics.onDriftTier((tier) => {
+    sfx('tier', tier);
+    elDrift.dataset.tier = String(tier);
+  });
+  physics.onDriftBoost((tier) => {
+    sfx('turbo', tier);
+    toast(TURBO_NAMES[tier], `tier${tier}`);
+    fovKick = 0.6 + tier * 0.2;
+  });
+
   if (import.meta.env && import.meta.env.DEV) {
-    window.__minicart = { physics, rivals, track, scene, camera, renderer };
+    window.__minicart = { physics, rivals, items, track, scene, camera, renderer };
   }
 
   // ---------------------------------------------------------------------------
@@ -195,6 +289,7 @@ async function initGame() {
     })
   );
 
+  let boostPull = 0;
   function updateCamera(dt, t, st) {
     _fwd.copy(st.tangent).applyAxisAngle(st.normal, (st.headingYaw || 0) * 0.4).normalize();
     let shakeR = 0;
@@ -206,10 +301,27 @@ async function initGame() {
       shakeU = Math.cos(t * 125) * 0.0008 * k;
     }
 
+    // Speed feel: FOV widens with speed, kicks on turbos, camera drops back a touch
+    const boosting = st.boostActive > 0 ? 1 : 0;
+    boostPull = THREE.MathUtils.lerp(boostPull, boosting, 1 - Math.exp(-dt * 5));
+    fovKick = Math.max(0, fovKick - dt * 1.6);
+    if (activeCameraMode === 1 || activeCameraMode === 2) {
+      const speedK = THREE.MathUtils.clamp((Math.abs(st.speed) - 0.08) / 0.2, 0, 1);
+      const targetFov = 54 + speedK * 8 + boostPull * 8 + fovKick * 6;
+      if (Math.abs(camera.fov - targetFov) > 0.05) {
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.exp(-dt * 6));
+        camera.updateProjectionMatrix();
+      }
+    }
+    if (elSpeedLines) {
+      const lines = activeCameraMode <= 2 && st.speed > 0.05 ? Math.min(1, boostPull * 0.85 + fovKick * 0.5) : 0;
+      elSpeedLines.style.opacity = lines.toFixed(3);
+    }
+
     if (activeCameraMode === 1) {
       _desiredPos
         .copy(st.position)
-        .addScaledVector(_fwd, -0.0175)
+        .addScaledVector(_fwd, -0.0175 - boostPull * 0.004)
         .addScaledVector(st.normal, 0.0078 + st.hopHeight * 0.38)
         .addScaledVector(st.right, shakeR)
         .addScaledVector(st.normal, shakeU);
@@ -476,6 +588,14 @@ async function initGame() {
     }
     const pos = rivals.getPlayerPosition();
     if (pos !== lastPos && elPosNum) {
+      const racing = st.raceClockActive && !st.raceFinished && lastPos > 0;
+      const badge = document.getElementById('hud-pos');
+      if (racing && badge && pos !== lastPos) {
+        if (pos < lastPos) sfx('overtake');
+        badge.classList.remove('pos-up', 'pos-down');
+        void badge.offsetWidth;
+        badge.classList.add(pos < lastPos ? 'pos-up' : 'pos-down');
+      }
       lastPos = pos;
       elPosNum.textContent = String(pos);
       if (elPosSuffix) elPosSuffix.textContent = ordinalSuffix(pos);
@@ -687,8 +807,69 @@ async function initGame() {
   });
   onClick(elBrand, showWelcome);
 
+  // How to Play modal
+  const elHowto = $('howto-overlay');
+  const elHowtoItems = $('howto-items');
+  const HOWTO_ITEM_TEXT = {
+    fizz: 'Three bursts of speed. Press E once for each.',
+    goo: 'Drops a sticky puddle behind you. Anyone who drives into it spins out.',
+    dart: 'A homing spark that chases down the kart directly ahead of you.',
+    bubble: 'A bubble that blocks the next hit for a few seconds.',
+    pulse: 'Only for the back of the pack. Jolts every kart close ahead of you.',
+  };
+  if (elHowtoItems) {
+    elHowtoItems.innerHTML = Object.keys(HOWTO_ITEM_TEXT)
+      .map(
+        (k) =>
+          `<li><span class="howto-item-icon">${ITEM_ICONS[k]}</span><span><span class="howto-item-name">${ITEMS[k].name}</span><span class="howto-item-desc">${HOWTO_ITEM_TEXT[k]}</span></span></li>`
+      )
+      .join('');
+  }
+  const isHowtoOpen = () => elHowto && !elHowto.classList.contains('hidden');
+  let howtoReturnFocus = null;
+  function openHowto() {
+    if (!elHowto) return;
+    howtoReturnFocus = document.activeElement;
+    elHowto.classList.remove('hidden');
+    const scroller = elHowto.querySelector('.howto-scroll');
+    if (scroller) scroller.scrollTop = 0;
+    const done = $('btn-howto-done');
+    if (done) done.focus({ preventScroll: true });
+  }
+  function closeHowto() {
+    if (!elHowto) return;
+    elHowto.classList.add('hidden');
+    try {
+      localStorage.setItem('minicart-howto-seen', '1');
+    } catch (_) {}
+    if (howtoReturnFocus && howtoReturnFocus.blur) howtoReturnFocus.blur();
+  }
+  onClick($('btn-welcome-howto'), openHowto);
+  onClick($('btn-howto-done'), closeHowto);
+  onClick($('btn-howto-close'), closeHowto);
+  if (elHowto) {
+    elHowto.addEventListener('click', (e) => {
+      if (e.target === elHowto) closeHowto();
+    });
+  }
+  // First visit: show the rules before the first race
+  try {
+    if (!localStorage.getItem('minicart-howto-seen')) openHowto();
+  } catch (_) {}
+
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    if (isHowtoOpen()) {
+      if (['Enter', 'NumpadEnter', 'Escape', 'KeyH'].includes(e.code)) {
+        e.preventDefault();
+        closeHowto();
+      }
+      return;
+    }
+    if (e.code === 'KeyH' && (isWelcomeOpen() || isFinishOpen())) {
+      openHowto();
+      return;
+    }
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       if (isWelcomeOpen() || isFinishOpen()) {
         e.preventDefault();
@@ -702,6 +883,8 @@ async function initGame() {
       } else {
         showWelcome();
       }
+    } else if (e.code === 'KeyE' || e.code === 'KeyF') {
+      items.usePlayerItem();
     } else if (e.code === 'KeyM') {
       setSound(!soundOn);
     } else if (/^Digit[1-4]$/.test(e.code)) {
@@ -713,14 +896,20 @@ async function initGame() {
   const touchButtons = elTouch ? Array.from(elTouch.querySelectorAll('.mobile-ctrl-btn')) : [];
   const touchDirs = new Set();
   const pointerDirs = new Map();
+  let touchItemDown = false;
   function applyTouch() {
-    for (const dir of ['left', 'right', 'forward', 'backward']) {
+    for (const dir of ['left', 'right', 'forward', 'backward', 'drift']) {
       let pressed = touchDirs.has(dir);
       for (const d of pointerDirs.values()) if (d === dir) pressed = true;
       physics.setTouchKey(dir, pressed);
     }
+    let itemPressed = touchDirs.has('item');
+    for (const d of pointerDirs.values()) if (d === 'item') itemPressed = true;
+    if (itemPressed && !touchItemDown) items.usePlayerItem();
+    touchItemDown = itemPressed;
     for (const btn of touchButtons) {
-      btn.classList.toggle('is-pressed', Boolean(physics.keys[btn.dataset.control]));
+      const c = btn.dataset.control;
+      btn.classList.toggle('is-pressed', c === 'item' ? itemPressed : Boolean(physics.keys[c]));
     }
   }
   function releaseTouch() {
@@ -800,7 +989,11 @@ async function initGame() {
 
     kart.kartRoot.position.copy(st.position);
     kart.kartRoot.quaternion.copy(st.quaternion);
+    if (st.spinYaw) kart.kartRoot.rotateY(st.spinYaw);
     kart.updateKartVisuals(dt, st);
+    items.update(dt, elapsed);
+    elDrift.classList.toggle('on', Boolean(st.isDrifting));
+    if (!st.isDrifting) elDrift.dataset.tier = '0';
     if (sparkUniforms && sparkUniforms.uResolution) {
       sparkUniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
     }

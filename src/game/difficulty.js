@@ -5,12 +5,13 @@
  * pace            — multiplies every rival's speed
  * easeWhenAhead   — how much rivals slow down while they lead the player
  * pushWhenBehind  — how much rivals speed up while the player leads them
+ * cornerTurbo     — chance a rival fires a mini-turbo out of each corner
  */
 export const DIFFICULTY_LEVELS = [
-  { key: 'rookie', name: 'ROOKIE', pace: 0.93, easeWhenAhead: 0.1, pushWhenBehind: 0.03 },
-  { key: 'pro', name: 'PRO', pace: 1.0, easeWhenAhead: 0.07, pushWhenBehind: 0.07 },
-  { key: 'expert', name: 'EXPERT', pace: 1.035, easeWhenAhead: 0.04, pushWhenBehind: 0.08 },
-  { key: 'champion', name: 'CHAMPION', pace: 1.065, easeWhenAhead: 0.02, pushWhenBehind: 0.09 },
+  { key: 'rookie', name: 'ROOKIE', pace: 0.93, easeWhenAhead: 0.1, pushWhenBehind: 0.03, cornerTurbo: 0 },
+  { key: 'pro', name: 'PRO', pace: 1.0, easeWhenAhead: 0.07, pushWhenBehind: 0.07, cornerTurbo: 0.35 },
+  { key: 'expert', name: 'EXPERT', pace: 1.05, easeWhenAhead: 0.04, pushWhenBehind: 0.085, cornerTurbo: 0.7 },
+  { key: 'champion', name: 'CHAMPION', pace: 1.09, easeWhenAhead: 0.02, pushWhenBehind: 0.1, cornerTurbo: 1.0 },
 ];
 
 const storageKey = (world) => `minicart.progress.${world}`;

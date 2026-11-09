@@ -93,7 +93,7 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
 
   // Difficulty: overall pace plus how much the pack eases off when leading the player
   // and pushes when trailing (catch-up / rubber-banding)
-  let difficulty = { pace: 1.0, easeWhenAhead: 0.07, pushWhenBehind: 0.07 };
+  let difficulty = { pace: 1.0, easeWhenAhead: 0.07, pushWhenBehind: 0.07, cornerTurbo: 0.35 };
 
   let raceStarted = false;
   let finishCounter = 0;
@@ -134,6 +134,8 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
       r.finishTime = null;
       r.laneBias = (Math.random() * 2 - 1) * MAX_LATERAL * 0.45;
       r.headingYaw = 0;
+      r.spinTimer = 0;
+      r.spinYaw = 0;
       syncPose(r, 0);
     }
   }
@@ -160,7 +162,13 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
     let targetSpeed =
       CRUISE_SPEED * RIVAL_PACE * physics.aiPace * difficulty.pace * r.skill * (1 + rubber) * cornerFactor;
 
-    if (r.finished) {
+    if (r.spinTimer > 0) {
+      r.spinTimer = Math.max(0, r.spinTimer - dt);
+      r.spinYaw += dt * 15 * Math.min(1, r.spinTimer / 0.25 + 0.2);
+      if (r.spinTimer === 0) r.spinYaw = 0;
+      r.boostActive = 0;
+      targetSpeed = 0.03;
+    } else if (r.finished) {
       targetSpeed *= 0.72; // Cool-down lap
     } else {
       // Occasional turbo on gentle sections
@@ -170,6 +178,16 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
       } else if (r.boostCooldown <= 0 && cornerFactor > 0.95 && Math.abs(frame.signedCurvature) < 0.3) {
         r.boostActive = 0.55 + Math.random() * 0.35;
         r.boostCooldown = 4.5 + Math.random() * 4.0;
+      }
+      // Corner-exit mini-turbos (the AI's version of a drift boost), more often on harder levels
+      const inCorner = Math.abs(frame.signedCurvature) > 0.6;
+      if (inCorner) {
+        r.cornerTime = (r.cornerTime || 0) + dt;
+      } else if (r.cornerTime > 0) {
+        if (r.cornerTime > 0.5 && Math.random() < (difficulty.cornerTurbo || 0)) {
+          r.boostActive = Math.max(r.boostActive, 0.45 + Math.min(0.6, r.cornerTime * 0.3));
+        }
+        r.cornerTime = 0;
       }
       if (r.boostActive > 0) {
         targetSpeed = Math.max(targetSpeed, BOOST_SPEED * 0.86 * r.skill);
@@ -218,7 +236,7 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
 
     // Longitudinal
     const speedErr = targetSpeed - r.speed;
-    const accel = THREE.MathUtils.clamp(speedErr * 4.0, -0.9, r.boostActive > 0 ? 0.42 : 0.24);
+    const accel = THREE.MathUtils.clamp(speedErr * 4.0, r.spinTimer > 0 ? -0.35 : -0.9, r.boostActive > 0 ? 0.42 : 0.24);
     r.speed = Math.max(0, r.speed + (accel - frame.slope * 0.12) * dt);
 
     // Lateral (critically-damped spring toward the chosen lane)
@@ -318,7 +336,7 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
     _left.crossVectors(frame.normal, frame.tangent).normalize();
     _rot.makeBasis(_left, frame.normal, frame.tangent);
     _baseQuat.setFromRotationMatrix(_rot);
-    _yawQuat.setFromAxisAngle(frame.normal, r.headingYaw);
+    _yawQuat.setFromAxisAngle(frame.normal, r.headingYaw + (r.spinYaw || 0));
     root.quaternion.copy(_yawQuat.multiply(_baseQuat));
 
     const v = r.vis;
@@ -498,6 +516,19 @@ export function createRivalField({ scene, sparkScene, physics, playerKartRoot })
     attachGlbKart,
     get fieldSize() {
       return rivals.length + 1;
+    },
+    /** Spin a rival out (hazard hit). */
+    spinOut(r, seconds = 0.9) {
+      r.spinTimer = Math.max(r.spinTimer || 0, seconds);
+      r.boostActive = 0;
+    },
+    /** Give a rival a turbo (boost pad / item). */
+    boost(r, seconds) {
+      if (r.spinTimer > 0) return;
+      r.boostActive = Math.max(r.boostActive, seconds);
+    },
+    get raceStarted() {
+      return raceStarted;
     },
     setDifficulty(d) {
       difficulty = { ...difficulty, ...d };
