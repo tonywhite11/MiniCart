@@ -198,7 +198,7 @@
                 <li><span class="howto-kbds"><kbd class="welcome-key">M</kbd></span><span>Sound on / off</span></li>
                 <li><span class="howto-kbds"><kbd class="welcome-key welcome-key-wide">ESC</kbd></span><span>Menu</span></li>
               </ul>
-              <p class="howto-note howto-touch-note">On a phone or iPad, use the on-screen buttons. Holding DRIFT also keeps the gas on, so steer with your left thumb and hold DRIFT with your right.</p>
+              <p class="howto-note howto-touch-note">On a phone or iPad the gas is on automatically. Steer with the stick under your left thumb (pull it down to brake). Your right thumb holds DRIFT and taps ITEM.</p>
             </section>
 
             <section class="howto-section">
@@ -307,90 +307,21 @@
         </div>
       </footer>
 
-      <!-- Mobile Bottom Touch Controls Row (Visible in Mobile View after clicking Start Time Trial) -->
-      <div
-        id="mobile-touch-controls"
-        class="mobile-touch-controls hidden"
-        role="region"
-        aria-label="Mobile Driving Controls"
-      >
-        <!-- Left Side: Left (A) and Right (D) Steer Icons -->
-        <div class="mobile-ctrl-cluster mobile-steer-cluster" role="group" aria-label="Steering Controls">
-          <button
-            id="btn-touch-left"
-            class="mobile-ctrl-btn mobile-ctrl-steer"
-            type="button"
-            data-control="left"
-            aria-label="Steer Left (A)"
-            title="Steer Left (A)"
-          >
-            <span class="mobile-ctrl-inner">
-              <svg class="mobile-ctrl-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="13 17 8 12 13 7"></polyline>
-                <polyline points="18 17 13 12 18 7" opacity="0.45"></polyline>
-              </svg>
-              <span class="mobile-ctrl-label">LEFT</span>
-            </span>
-          </button>
-
-          <button
-            id="btn-touch-right"
-            class="mobile-ctrl-btn mobile-ctrl-steer"
-            type="button"
-            data-control="right"
-            aria-label="Steer Right (D)"
-            title="Steer Right (D)"
-          >
-            <span class="mobile-ctrl-inner">
-              <svg class="mobile-ctrl-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="11 17 16 12 11 7"></polyline>
-                <polyline points="6 17 11 12 6 7" opacity="0.45"></polyline>
-              </svg>
-              <span class="mobile-ctrl-label">RIGHT</span>
-            </span>
-          </button>
+      <!-- Touch controls, gamepad style: joystick on the left, action buttons on the right.
+           The gas is on automatically; pull the stick down to brake / reverse. -->
+      <div id="mobile-touch-controls" class="mobile-touch-controls hidden" role="region" aria-label="Touch driving controls">
+        <div id="touch-stick-zone" class="touch-stick-zone" aria-label="Steering stick">
+          <div id="touch-stick-base" class="touch-stick-base">
+            <span class="touch-stick-brake-hint">BRAKE</span>
+            <div id="touch-stick-knob" class="touch-stick-knob"></div>
+          </div>
         </div>
-
-        <!-- Right Side: Drift / Item, then Accelerate (W) and Brake (S) -->
-        <div class="mobile-ctrl-cluster mobile-pedal-cluster" role="group" aria-label="Accelerate and Brake Controls">
-          <button id="btn-touch-item" class="mobile-ctrl-btn mobile-ctrl-item" type="button" data-control="item" aria-label="Use item (E)" title="Use item (E)">
-            <span class="mobile-ctrl-inner"><span class="mobile-ctrl-label">ITEM</span></span>
+        <div class="touch-action-pad">
+          <button id="btn-touch-item" class="mobile-ctrl-btn touch-action-btn mobile-ctrl-item" type="button" data-control="item" aria-label="Use item">
+            <span class="mobile-ctrl-label">ITEM</span>
           </button>
-          <button id="btn-touch-drift" class="mobile-ctrl-btn mobile-ctrl-drift" type="button" data-control="drift" aria-label="Drift (Space)" title="Drift (Space)">
-            <span class="mobile-ctrl-inner"><span class="mobile-ctrl-label">DRIFT</span></span>
-          </button>
-          <button
-            id="btn-touch-accel"
-            class="mobile-ctrl-btn mobile-ctrl-accel"
-            type="button"
-            data-control="forward"
-            aria-label="Accelerate (W)"
-            title="Accelerate (W)"
-          >
-            <span class="mobile-ctrl-inner">
-              <svg class="mobile-ctrl-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="17 13 12 8 7 13"></polyline>
-                <polyline points="17 18 12 13 7 18" opacity="0.45"></polyline>
-              </svg>
-              <span class="mobile-ctrl-label">ACCEL</span>
-            </span>
-          </button>
-
-          <button
-            id="btn-touch-brake"
-            class="mobile-ctrl-btn mobile-ctrl-brake"
-            type="button"
-            data-control="backward"
-            aria-label="Brake (S)"
-            title="Brake (S)"
-          >
-            <span class="mobile-ctrl-inner">
-              <svg class="mobile-ctrl-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="7 8 12 13 17 8"></polyline>
-                <line x1="7" y1="17" x2="17" y2="17"></line>
-              </svg>
-              <span class="mobile-ctrl-label">BRAKE</span>
-            </span>
+          <button id="btn-touch-drift" class="mobile-ctrl-btn touch-action-btn mobile-ctrl-drift" type="button" data-control="drift" aria-label="Drift">
+            <span class="mobile-ctrl-label">DRIFT</span>
           </button>
         </div>
       </div>

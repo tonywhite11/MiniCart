@@ -630,7 +630,15 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     syncCombinedKeys();
   }
 
+  // Analog steering from the on-screen joystick, -1 (left) .. +1 (right)
+  let touchSteer = 0;
+  function setTouchSteer(x) {
+    touchSteer = THREE.MathUtils.clamp(Number(x) || 0, -1, 1);
+    if (touchSteer !== 0 && state.autopilot) setAutopilot(false);
+  }
+
   function clearTouchKeys() {
+    touchSteer = 0;
     touchKeys.forward = false;
     touchKeys.backward = false;
     touchKeys.left = false;
@@ -782,6 +790,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       if (keys.forward) throttle += 1.0;
       if (keys.backward) throttle -= 1.0;
       turnRight = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+      // Analog joystick (touch): used when no steering key is held
+      if (turnRight === 0 && touchSteer !== 0) turnRight = touchSteer;
     }
 
     // Spun out by a hazard: no control until the kart recovers
@@ -1228,6 +1238,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     resetToStart,
     setAutopilot,
     setTouchKey,
+    setTouchSteer,
     clearTouchKeys,
     notifyLightsOut,
     onLapComplete: (cb) => {

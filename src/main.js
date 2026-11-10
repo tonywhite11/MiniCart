@@ -51,14 +51,18 @@ async function initGame() {
   // 1. Renderer, scene, camera, post-processing
   // ---------------------------------------------------------------------------
   const container = document.getElementById('canvas-container');
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Tablets and phones get a lighter profile: lower resolution, cheaper shadows,
+  // and the resolution steps down further if frames run slow (see animate()).
+  const lowPower = document.documentElement.classList.contains('touch-ui');
+  let pixelRatio = Math.min(window.devicePixelRatio, lowPower ? 1.5 : 2);
+  const renderer = new THREE.WebGLRenderer({ antialias: !lowPower, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(pixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = world.exposure ?? 1.0;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = lowPower ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -66,10 +70,10 @@ async function initGame() {
 
   const composerTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
     type: THREE.HalfFloatType,
-    samples: 4,
+    samples: lowPower ? 2 : 4,
   });
   const composer = new EffectComposer(renderer, composerTarget);
-  composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  composer.setPixelRatio(pixelRatio);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = world.bloom || { strength: 0.2, radius: 0.4, threshold: 0.9 };
   const bloomPass = new UnrealBloomPass(
@@ -88,6 +92,11 @@ async function initGame() {
   const trackMesh = buildTrackMesh(track, world.trackTheme);
   scene.add(trackMesh.group);
   const env = world.build({ scene, renderer, track });
+  if (lowPower) {
+    scene.traverse((o) => {
+      if (o.isLight && o.castShadow && o.shadow) o.shadow.mapSize.set(1024, 1024);
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // 3. Physics, player kart, rivals, audio
@@ -568,7 +577,8 @@ async function initGame() {
       speedoSegEls.forEach((el, i) => {
         if (!el) return;
         el.style.fill = i < segs ? SPEEDO_SEG_COLORS[i] : 'rgba(255, 255, 255, 0.12)';
-        if (i < segs && i >= 10) el.setAttribute('filter', 'url(#speedoCyanGlow)');
+        // SVG glow filters are slow to repaint on iPad Safari
+        if (i < segs && i >= 10 && !lowPower) el.setAttribute('filter', 'url(#speedoCyanGlow)');
         else el.removeAttribute('filter');
       });
     }
@@ -892,35 +902,89 @@ async function initGame() {
     }
   });
 
+  // Touch controls, gamepad style. Left: a floating stick (analog steering,
+  // pull down to brake). Right: DRIFT and ITEM. The gas is on automatically.
   const elTouch = $('mobile-touch-controls');
+  const elStickZone = $('touch-stick-zone');
+  const elStickBase = $('touch-stick-base');
+  const elStickKnob = $('touch-stick-knob');
   const touchButtons = elTouch ? Array.from(elTouch.querySelectorAll('.mobile-ctrl-btn')) : [];
-  const touchDirs = new Set();
-  const pointerDirs = new Map();
+  const STICK_RADIUS = 56; // px the knob can travel
+  const stick = { id: null, cx: 0, cy: 0, x: 0, y: 0 };
+  const buttonTouches = new Map(); // touch / pointer id -> control
   let touchItemDown = false;
+  let touchActive = false;
+  // Auto-gas only kicks in once the on-screen controls are actually used, so a
+  // touchscreen laptop driven from the keyboard behaves normally.
+  let touchSeen = false;
+  function markTouchSeen() {
+    if (touchSeen) return;
+    touchSeen = true;
+    touchActive = !elTouch.classList.contains('hidden');
+  }
+
   function applyTouch() {
-    const held = (dir) => {
-      if (touchDirs.has(dir)) return true;
-      for (const d of pointerDirs.values()) if (d === dir) return true;
+    if (!touchActive) return;
+    const held = (c) => {
+      for (const d of buttonTouches.values()) if (d === c) return true;
       return false;
     };
-    // Holding DRIFT also keeps the gas on: on a touch screen your right thumb
-    // can't press ACCEL and DRIFT at the same time.
-    const drifting = held('drift');
-    for (const dir of ['left', 'right', 'forward', 'backward', 'drift']) {
-      physics.setTouchKey(dir, held(dir) || (dir === 'forward' && drifting && !held('backward')));
-    }
-    let itemPressed = touchDirs.has('item');
-    for (const d of pointerDirs.values()) if (d === 'item') itemPressed = true;
+    const braking = stick.id !== null && stick.y > 0.55;
+    // Analog steer with a small dead zone and a gentle curve for fine control
+    const ax = Math.abs(stick.x);
+    const steer = ax < 0.12 ? 0 : Math.sign(stick.x) * Math.min(1, Math.pow((ax - 0.12) / 0.78, 1.25));
+    physics.setTouchSteer(steer);
+    physics.setTouchKey('forward', !braking);
+    physics.setTouchKey('backward', braking);
+    physics.setTouchKey('drift', held('drift'));
+    const itemPressed = held('item');
     if (itemPressed && !touchItemDown) items.usePlayerItem();
     touchItemDown = itemPressed;
-    for (const btn of touchButtons) {
-      const c = btn.dataset.control;
-      btn.classList.toggle('is-pressed', c === 'item' ? itemPressed : Boolean(physics.keys[c]));
+    for (const btn of touchButtons) btn.classList.toggle('is-pressed', held(btn.dataset.control));
+    if (elStickBase) elStickBase.classList.toggle('is-braking', braking);
+  }
+  function drawStick() {
+    if (!elStickKnob) return;
+    elStickKnob.style.transform = `translate(${stick.x * STICK_RADIUS}px, ${stick.y * STICK_RADIUS}px)`;
+  }
+  function stickStart(id, x, y) {
+    stick.id = id;
+    // The stick appears wherever your thumb lands inside the left zone
+    const zr = elStickZone.getBoundingClientRect();
+    const half = elStickBase.offsetWidth / 2;
+    stick.cx = Math.min(Math.max(x, zr.left + half), zr.right - half);
+    stick.cy = Math.min(Math.max(y, zr.top + half), zr.bottom - half);
+    elStickBase.style.left = `${stick.cx - zr.left - half}px`;
+    elStickBase.style.top = `${stick.cy - zr.top - half}px`;
+    elStickBase.classList.add('is-active');
+    stickMove(x, y);
+  }
+  function stickMove(x, y) {
+    let dx = (x - stick.cx) / STICK_RADIUS;
+    let dy = (y - stick.cy) / STICK_RADIUS;
+    const len = Math.hypot(dx, dy);
+    if (len > 1) {
+      dx /= len;
+      dy /= len;
     }
+    stick.x = dx;
+    stick.y = dy;
+    drawStick();
+    applyTouch();
+  }
+  function stickEnd() {
+    stick.id = null;
+    stick.x = stick.y = 0;
+    drawStick();
+    if (elStickBase) {
+      elStickBase.classList.remove('is-active', 'is-braking');
+      elStickBase.style.left = elStickBase.style.top = '';
+    }
+    applyTouch();
   }
   function releaseTouch() {
-    touchDirs.clear();
-    pointerDirs.clear();
+    buttonTouches.clear();
+    if (stick.id !== null) stickEnd();
     physics.clearTouchKeys();
     touchButtons.forEach((b) => b.classList.remove('is-pressed'));
   }
@@ -928,42 +992,68 @@ async function initGame() {
     if (!elTouch) return;
     const hide = isWelcomeOpen() || isFinishOpen();
     elTouch.classList.toggle('hidden', hide);
-    if (hide) releaseTouch();
+    touchActive = !hide && touchSeen;
+    releaseTouch();
+    applyTouch();
   }
-  if (elTouch) {
-    const fromTouches = (e) => {
+  if (elTouch && elStickZone) {
+    const buttonAt = (x, y) => {
+      const hit = document.elementFromPoint(x, y);
+      const btn = hit && hit.closest ? hit.closest('.mobile-ctrl-btn') : null;
+      return btn && btn.dataset.control ? btn.dataset.control : null;
+    };
+    const onTouch = (e) => {
       if (e.cancelable) e.preventDefault();
-      touchDirs.clear();
-      for (const t of e.touches || []) {
-        const hit = document.elementFromPoint(t.clientX, t.clientY);
-        const btn = hit && hit.closest ? hit.closest('.mobile-ctrl-btn') : null;
-        if (btn && btn.dataset.control) touchDirs.add(btn.dataset.control);
+      markTouchSeen();
+      for (const t of e.changedTouches) {
+        if (e.type === 'touchstart') {
+          if (stick.id === null && elStickZone.contains(t.target)) {
+            stickStart(t.identifier, t.clientX, t.clientY);
+            continue;
+          }
+          const c = buttonAt(t.clientX, t.clientY);
+          if (c) buttonTouches.set(t.identifier, c);
+        } else if (e.type === 'touchmove') {
+          if (t.identifier === stick.id) {
+            stickMove(t.clientX, t.clientY);
+          } else if (buttonTouches.has(t.identifier)) {
+            // slide your thumb between DRIFT and ITEM
+            const c = buttonAt(t.clientX, t.clientY);
+            if (c) buttonTouches.set(t.identifier, c);
+          }
+        } else {
+          if (t.identifier === stick.id) stickEnd();
+          buttonTouches.delete(t.identifier);
+        }
       }
       applyTouch();
     };
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
-      elTouch.addEventListener(ev, fromTouches, { passive: false });
+      elTouch.addEventListener(ev, onTouch, { passive: false });
     }
     elTouch.addEventListener('contextmenu', (e) => e.preventDefault());
-    for (const btn of touchButtons) {
-      btn.addEventListener('pointerdown', (e) => {
-        if (e.pointerType === 'touch') return;
-        e.preventDefault();
-        try {
-          btn.setPointerCapture(e.pointerId);
-        } catch {
-          // ignore
-        }
-        pointerDirs.set(e.pointerId, btn.dataset.control);
+    // Mouse / pen fallback (testing on a desktop with ?touch=1)
+    const pointerId = (e) => `p${e.pointerId}`;
+    elTouch.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return;
+      e.preventDefault();
+      markTouchSeen();
+      if (stick.id === null && elStickZone.contains(e.target)) {
+        stickStart(pointerId(e), e.clientX, e.clientY);
+      } else {
+        const c = buttonAt(e.clientX, e.clientY);
+        if (c) buttonTouches.set(pointerId(e), c);
         applyTouch();
-      });
-      const release = (e) => {
-        if (pointerDirs.delete(e.pointerId)) applyTouch();
-      };
-      btn.addEventListener('pointerup', release);
-      btn.addEventListener('pointercancel', release);
-      btn.addEventListener('lostpointercapture', release);
-    }
+      }
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' && stick.id === pointerId(e)) stickMove(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'touch') return;
+      if (stick.id === pointerId(e)) stickEnd();
+      if (buttonTouches.delete(pointerId(e))) applyTouch();
+    });
     window.addEventListener('blur', releaseTouch);
   }
 
@@ -982,12 +1072,35 @@ async function initGame() {
   setCameraMode(1);
   applyLevel();
   showWelcome();
+  // Adaptive resolution: if the average frame is slower than ~45 fps for two
+  // seconds, render fewer pixels (down to 1x). Never steps back up mid-session,
+  // so it cannot oscillate.
+  let perfTime = 0;
+  let perfFrames = 0;
+  function adaptQuality(rawDt) {
+    if (document.hidden || rawDt > 0.5) return;
+    perfTime += rawDt;
+    perfFrames += 1;
+    if (perfTime < 2) return;
+    const avg = perfTime / perfFrames;
+    perfTime = 0;
+    perfFrames = 0;
+    if (avg > 1 / 45 && pixelRatio > 1) {
+      pixelRatio = Math.max(1, Math.round((pixelRatio - 0.25) * 100) / 100);
+      renderer.setPixelRatio(pixelRatio);
+      composer.setPixelRatio(pixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    }
+  }
   const clock = new THREE.Clock();
   let elapsed = 0;
   function animate() {
     requestAnimationFrame(animate);
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const rawDt = clock.getDelta();
+    const dt = Math.min(rawDt, 0.05);
     elapsed += dt;
+    adaptQuality(rawDt);
 
     stepCountdown(dt);
     const st = physics.stepPhysics(dt);
